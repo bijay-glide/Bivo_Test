@@ -43,6 +43,8 @@
     "test:ui:userweb:wire": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js\"",
     "test:ui:userweb:fx": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.5 ui_userweb_fx_transaction.spec.js\"",
     "test:ui:userweb:us": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.6 ui_userweb_us_transaction.spec.js\"",
+    "test:ui:userweb:linkcard": "playwright test --project=\"UI user-web link card only\"",
+    "pw:ui:userweb:linkcard": "playwright test --ui --project=\"UI user-web link card only\"",
     "test:ui:userweb:onboarding": "playwright test --project=\"UI user-web onboarding\"",
     "test:ui:userweb:full": "playwright test --project=\"UI user-web onboarding\""
   },

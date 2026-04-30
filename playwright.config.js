@@ -18,6 +18,9 @@ const userWebOnboardingFiles = [
   'ui/user-web/1.3 ui_userweb_first_login_setup_payment.spec.js'
 ];
 
+/** No dependency on onboarding — use with LOGIN_PHONE_RAW (and optional STANDALONE_*) in .env. */
+const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
+
 module.exports = defineConfig({
   testDir: './tests',
   timeout: 60000, // Global test timeout: 1 minute
@@ -62,7 +65,6 @@ module.exports = defineConfig({
     },
     {
       name: 'UI BCR parallel',
-      dependencies: ['UI BCR onboarding'],
       testMatch: 'ui/bcr/*.spec.js',
       testIgnore: bcrOnboardingFiles,
       fullyParallel: true,
@@ -78,11 +80,17 @@ module.exports = defineConfig({
     },
     {
       name: 'UI user-web parallel',
-      dependencies: ['UI user-web onboarding'],
       testMatch: 'ui/user-web/*.spec.js',
       testIgnore: userWebOnboardingFiles,
       fullyParallel: true,
       workers: process.env.CI ? 2 : 4,
+      use: { ...uiServerUse }
+    },
+    {
+      name: 'UI user-web link card only',
+      testMatch: userWebLinkCardOnlyFile,
+      fullyParallel: false,
+      workers: 1,
       use: { ...uiServerUse }
     }
   ]
