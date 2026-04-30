@@ -1,0 +1,62 @@
+{
+  "name": "playwright-bivo-api-tests",
+  "version": "1.0.0",
+  "description": "Playwright API testing suite for Bijay Workspace Client Account APIs",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:all": "playwright test tests/",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright test --reporter=html",
+    "show:report": "playwright show-report",
+    "pw:ui": "playwright test --ui tests/ui/",
+    "pw:ui:api": "playwright test --ui --project=\"API Tests\"",
+    "pw:ui:browser": "playwright test --ui tests/ui/",
+    "pw:ui:all": "playwright test --ui",
+
+    "test:api": "playwright test --project=\"API Tests\" tests/api/",
+    "test:api:create": "playwright test --project=\"API Tests\" tests/api/01-create-client-account.spec.js",
+    "test:api:read": "playwright test --project=\"API Tests\" tests/api/02-account-read-operations.spec.js",
+    "test:api:write": "playwright test --project=\"API Tests\" tests/api/03-account-write-operations.spec.js",
+    "test:api:negative": "playwright test --project=\"API Tests\" tests/api/04-account-negative-scenarios.spec.js",
+    "test:api:extended": "playwright test --project=\"API Tests\" tests/api/05-extended-account-apis.spec.js",
+    "test:api:beneficiary-mgmt": "playwright test --project=\"API Tests\" tests/api/06-beneficiary-management.spec.js",
+    "test:api:fx": "playwright test --project=\"API Tests\" tests/api/07-fx-payment.spec.js",
+    "test:api:beneficiary": "playwright test --project=\"API Tests\" tests/api/08-beneficiary-and-currency.spec.js",
+    "test:api:wire": "playwright test --project=\"API Tests\" tests/api/09-wire-instructions.spec.js",
+    "test:api:ach": "playwright test --project=\"API Tests\" tests/api/10-ach-external-accounts.spec.js",
+    "test:api:partner-individual": "playwright test --project=\"API Tests\" tests/api/bivo-partner-individual-account.spec.js",
+
+    "test:ui": "playwright test --project=\"UI BCR onboarding\" --project=\"UI BCR parallel\" --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\"",
+    "test:ui:bcr": "playwright test --project=\"UI BCR onboarding\" --project=\"UI BCR parallel\"",
+    "test:ui:userweb": "playwright test --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\"",
+    "test:ui:bcr:signup": "playwright test --project=\"UI BCR onboarding\" \"tests/ui/bcr/1.1 ui_bcr_signup.spec.js\"",
+    "test:ui:bcr:first-login": "playwright test --project=\"UI BCR onboarding\" \"tests/ui/bcr/1.2 ui_bcr_first_login.spec.js\"",
+    "test:ui:bcr:first-login:payments": "playwright test --project=\"UI BCR onboarding\" \"tests/ui/bcr/1.3 ui_bcr_first_login_setup_payment.spec.js\"",
+    "test:ui:bcr:wire": "playwright test --no-deps --project=\"UI BCR parallel\" \"tests/ui/bcr/1.4 ui_bcr_setup_wire_payment.spec.js\"",
+    "test:ui:bcr:fx": "playwright test --no-deps --project=\"UI BCR parallel\" \"tests/ui/bcr/1.5 ui_bcr_fx_transaction.spec.js\"",
+    "test:ui:bcr:onboarding": "playwright test --project=\"UI BCR onboarding\"",
+    "test:ui:userweb:signup": "playwright test --project=\"UI user-web onboarding\" \"tests/ui/user-web/1.1 ui_userweb_signup.spec.js\"",
+    "test:ui:userweb:first-login": "playwright test --project=\"UI user-web onboarding\" \"tests/ui/user-web/1.2 ui_userweb_first_login.spec.js\"",
+    "test:ui:userweb:setup-payment": "playwright test --project=\"UI user-web onboarding\" \"tests/ui/user-web/1.3 ui_userweb_first_login_setup_payment.spec.js\"",
+    "test:ui:userweb:wire": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js\"",
+    "test:ui:userweb:fx": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.5 ui_userweb_fx_transaction.spec.js\"",
+    "test:ui:userweb:us": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.6 ui_userweb_us_transaction.spec.js\"",
+    "test:ui:userweb:onboarding": "playwright test --project=\"UI user-web onboarding\"",
+    "test:ui:userweb:full": "playwright test --project=\"UI user-web onboarding\""
+  },
+  "keywords": [
+    "playwright",
+    "api-testing",
+    "automation",
+    "testing"
+  ],
+  "author": "Bijay",
+  "license": "ISC",
+  "devDependencies": {
+    "@faker-js/faker": "^10.2.0",
+    "@playwright/test": "^1.57.0",
+    "dotenv": "^16.3.1"
+  }
+}

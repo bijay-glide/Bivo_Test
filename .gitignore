@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Environment — real secrets / local overrides (never commit).
+# Template for collaborators: `.env.example` (tracked).
+.env
+.env.local
+.env.*.local
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Traces and recordings
+trace.zip
+screenshots/
+videos/
+
+# Playwright UI cache (persistent context for faster loads)
+.playwright-ui-cache/
