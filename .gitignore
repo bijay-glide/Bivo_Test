@@ -36,3 +36,7 @@ videos/
 
 # Playwright UI cache (persistent context for faster loads)
 .playwright-ui-cache/
+
+# Claude Code
+.claude/
+CLAUDE.md

@@ -112,31 +112,11 @@ async function apiRequest(request, options) {
     config.data = body;
   }
 
-  // Make the request
   const methodLower = method.toLowerCase();
-  let response;
-
-  switch (methodLower) {
-    case 'get':
-      response = await request.get(fullUrl, config);
-      break;
-    case 'post':
-      response = await request.post(fullUrl, config);
-      break;
-    case 'put':
-      response = await request.put(fullUrl, config);
-      break;
-    case 'patch':
-      response = await request.patch(fullUrl, config);
-      break;
-    case 'delete':
-      response = await request.delete(fullUrl, config);
-      break;
-    default:
-      throw new Error(`Unsupported HTTP method: ${method}`);
+  if (!request[methodLower]) {
+    throw new Error(`Unsupported HTTP method: ${method}`);
   }
-
-  return response;
+  return await request[methodLower](fullUrl, config);
 }
 
 /**
@@ -210,13 +190,17 @@ async function apiDelete(request, endpoint, headers = {}, timeout = 30000) {
  * @param {Object} request - Playwright request fixture
  * @returns {Promise<string>} Access token
  */
-async function getOAuthToken(request) {
-  const clientId = process.env.TRANSACTION_CLIENT_ID || 'transaction-v1';
-  const clientSecret = process.env.TRANSACTION_CLIENT_SECRET || '16d105f7-0306-4bf5-8f69-f5b2840d1c7c';
+async function getOAuthToken(request, realm = null) {
+  const clientId = process.env.TRANSACTION_CLIENT_ID;
+  const clientSecret = process.env.TRANSACTION_CLIENT_SECRET;
   const grantType = process.env.TRANSACTION_GRANT_TYPE || 'client_credentials';
-  const keycloakHost = process.env.KEYCLOAK_HOST || 'http://4.224.110.58';
+  const keycloakHost = process.env.KEYCLOAK_HOST;
 
-  const tokenUrl = `${keycloakHost}/realms/glidecash/protocol/openid-connect/token`;
+  if (!clientId || !clientSecret) throw new Error('TRANSACTION_CLIENT_ID and TRANSACTION_CLIENT_SECRET must be set');
+  if (!keycloakHost) throw new Error('KEYCLOAK_HOST must be set');
+
+  const resolvedRealm = realm || process.env.KEYCLOAK_REALM || 'glidecash';
+  const tokenUrl = `${keycloakHost}/realms/${resolvedRealm}/protocol/openid-connect/token`;
 
   // Prepare form-urlencoded body
   const formData = new URLSearchParams();

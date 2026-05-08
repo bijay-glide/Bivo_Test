@@ -1,5 +1,6 @@
 const { expect } = require('@playwright/test');
 const DashboardPage = require('./DashboardPage');
+const { getUiBaseUrl } = require('../utils/env');
 
 /**
  * Payment gateway card tokenization (browser flow).
@@ -31,10 +32,6 @@ const LINK_CARD_FAILURE = Object.freeze({
   expiryMmYy: '12/31',
   zip: '55022',
 });
-
-function userWebHost() {
-  return process.env.HOST || 'https://bivo-dev.bivotech.co';
-}
 
 class LinkedCardPage {
   constructor(page) {
@@ -75,13 +72,30 @@ class LinkedCardPage {
   }
 
   async openLinkCardInstantly() {
-    await this.linkCardInstantlyCard.waitFor({ state: 'visible', timeout: 15000 });
-    await this.linkCardInstantlyCard.click();
+    // Two possible states depending on whether cards already exist on the account:
+    //   • No cards yet  → "Link Card Account Instantly" tile is shown
+    //   • Cards present → "Add Card Account" button is shown instead
+    // Race both; click whichever appears first.
+    const which = await Promise.race([
+      this.linkCardInstantlyCard
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .then(() => 'instantly'),
+      this.addCardAccountButton
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .then(() => 'add-card'),
+    ]);
+
+    if (which === 'instantly') {
+      await this.linkCardInstantlyCard.click();
+    } else {
+      await this.addCardAccountButton.click();
+    }
+
     await this.waitForVaultIframes();
   }
 
   async gotoLinkedCardAccountsPage() {
-    await this.page.goto(`${userWebHost()}/user-web/money-transfer/linked-card-accounts`, {
+    await this.page.goto(`${getUiBaseUrl()}/user-web/money-transfer/linked-card-accounts`, {
       waitUntil: 'load',
       timeout: 60000,
     });

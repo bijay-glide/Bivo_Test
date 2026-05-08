@@ -25,13 +25,26 @@ Copy **`.env.example`** to **`.env`**. Important variables:
 
 | Variable | Role |
 |----------|------|
-| `HOST` | Browser `baseURL` for UI tests |
+| `UI_ENV` | UI target selector: `dev` or `local` |
+| `UI_BASE_URL_DEV`, `UI_BASE_URL_LOCAL` | UI base URLs used by `UI_ENV` |
+| `UI_BASE_URL` | Optional explicit UI override (highest priority) |
+| `HOST` | Backend host used by helper API calls (OTP/identity helpers) |
 | `API_BASE_URL` | Base URL for API tests (`playwright.config.js`) |
 | `TENANT_IDENTIFIER`, `API_USERNAME`, `API_PASSWORD` | API auth |
 | Keycloak / `TRANSACTION_*` | OTP helper and permission grants (see `.env.example`) |
 | `LOGIN_PHONE_RAW`, `LOGIN_PASSWORD` | Skip onboarding when running parallel UI specs alone |
 
 `.env` is gitignored; never commit secrets. Use `.env.example` as the template only.
+
+Quick switch examples:
+
+```bash
+# Dev FE
+UI_ENV=dev npm run test:ui
+
+# Local FE (useful while testing local frontend changes)
+UI_ENV=local npm run test:ui
+```
 
 ## Repository layout
 

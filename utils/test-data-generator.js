@@ -2,6 +2,7 @@
  * Test Data Generator for User Registration
  */
 
+const { faker } = require('@faker-js/faker');
 const { toCentsInput, formatUsdDisplay } = require('./amount-input');
 
 // Allowed US area codes for signup tests.
@@ -9,8 +10,7 @@ const ALLOWED_SIGNUP_AREA_CODES = ['212', '415', '646'];
 const generatedPhoneNumbers = new Set();
 
 /**
- * Generates a random 4-digit number
- * @returns {string} 4-digit random number
+ * Generates a random numeric string of the given length
  */
 function generateRandomDigits(length) {
   return Math.floor(Math.random() * Math.pow(10, length))
@@ -18,30 +18,6 @@ function generateRandomDigits(length) {
     .padStart(length, '0');
 }
 
-/**
- * Generates a random name from a list
- * @param {string} type - 'first' or 'last'
- * @returns {string} Random name
- */
-function generateRandomName(type) {
-  const firstNames = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda', 'William', 'Barbara', 'David', 'Elizabeth', 'Richard', 'Susan', 'Joseph', 'Jessica', 'Thomas', 'Sarah', 'Charles', 'Karen'];
-  const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin'];
-
-  if (type === 'first') {
-    return firstNames[Math.floor(Math.random() * firstNames.length)];
-  } else {
-    return lastNames[Math.floor(Math.random() * lastNames.length)];
-  }
-}
-
-/**
- * Generates a signup email for UI registration flows.
- * Uses example.com and an automation prefix to clearly mark test-created users.
- *
- * @param {string} firstName
- * @param {string} lastName
- * @returns {string}
- */
 function generateSignupEmail(firstName, lastName) {
   const safeFirst = firstName.toLowerCase().replace(/[^a-z]/g, '');
   const safeLast = lastName.toLowerCase().replace(/[^a-z]/g, '');
@@ -83,35 +59,16 @@ function generateUniqueSignupPhoneNumber(areaCodes = ALLOWED_SIGNUP_AREA_CODES) 
   throw new Error('Unable to generate a unique signup phone number');
 }
 
-/**
- * Generates a random street address
- * @returns {string} Random street address
- */
 function generateRandomStreetAddress() {
-  const streetNames = ['Main St', 'Oak Ave', 'Maple Dr', 'Cedar Ln', 'Pine Rd', 'Elm St', 'Washington Blvd', 'Park Ave', 'Lake Dr', 'Hill St'];
-  const streetNumber = Math.floor(Math.random() * 9999) + 1;
-  const street = streetNames[Math.floor(Math.random() * streetNames.length)];
-
-  return `${streetNumber} ${street}`;
+  return faker.location.streetAddress();
 }
 
-/**
- * Generates a random city name
- * @returns {string} Random city name
- */
 function generateRandomCity() {
-  const cities = ['Springfield', 'Franklin', 'Clinton', 'Georgetown', 'Madison', 'Salem', 'Fairview', 'Bristol', 'Arlington', 'Manchester', 'Oxford', 'Clayton', 'Hudson', 'Riverside', 'Auburn'];
-
-  return cities[Math.floor(Math.random() * cities.length)];
+  return faker.location.city();
 }
 
-/**
- * Generates a random birth year (between 1970-2000)
- * @returns {string} Random birth year
- */
 function generateRandomBirthYear() {
-  const year = Math.floor(Math.random() * (2000 - 1970 + 1)) + 1970;
-  return year.toString();
+  return faker.date.birthdate({ min: 24, max: 55, mode: 'age' }).getFullYear().toString();
 }
 
 /**
@@ -130,8 +87,8 @@ function generateRandomSSN() {
  * @returns {object} Test data object
  */
 function generateUserTestData() {
-  const firstName = generateRandomName('first');
-  const lastName = generateRandomName('last');
+  const firstName = faker.person.firstName();
+  const lastName = faker.person.lastName();
   const phoneNumber = generateUniqueSignupPhoneNumber();
   const email = generateSignupEmail(firstName, lastName);
 
@@ -193,7 +150,7 @@ function generateIncomingWireData(accountNumber, options = {}) {
  */
 function generateWireInstructionData(clientId, options = {}) {
   const randomDigits = generateRandomDigits(8);
-  const businessName = options.businessName || `${generateRandomName('first')} Corp`;
+  const businessName = options.businessName || `${faker.person.firstName()} Corp`;
 
   return {
     clientId: options.clientId || clientId,
@@ -238,8 +195,8 @@ function generateWithdrawFundData(clientId, wireInstructionsId, options = {}) {
  * @returns {object} Wire form data
  */
 function generateWireFormData(options = {}) {
-  const firstName = options.firstName || generateRandomName('first');
-  const lastName  = options.lastName  || generateRandomName('last');
+  const firstName = options.firstName || faker.person.firstName();
+  const lastName  = options.lastName  || faker.person.lastName();
   const digits    = generateRandomDigits(10);
 
   return {
@@ -285,20 +242,62 @@ function generateRandomSendAmountUsd() {
 }
 
 /**
+ * Returns faker-generated extra payee fields for countries that need them,
+ * or null for countries whose payee form only asks for name.
+ * Add a new case here whenever a new country recording reveals extra fields.
+ *
+ * @param {string} countryCode
+ * @returns {object|null}
+ */
+function generatePayeeExtraFields(countryCode) {
+  switch (countryCode) {
+    case 'AU':
+      return {
+        streetAddress: faker.location.streetAddress(),
+        city: faker.location.city(),
+      };
+    case 'CN':
+      return {
+        streetAddress: faker.location.streetAddress(),
+        city: faker.location.city(),
+        zipCode: faker.string.numeric(6),       // 6-digit Chinese postal code
+      };
+    case 'IN':
+      return {
+        streetAddress: faker.location.streetAddress(),
+        city: faker.location.city(),
+        zipCode: faker.string.numeric(6),       // 6-digit Indian PIN code
+        phone: `+91 9${faker.string.numeric(4)} ${faker.string.numeric(5)}`, // Indian mobile: +91 9XXXX XXXXX (10 digits, starts with 9)
+      };
+    case 'JP':
+      return {
+        streetAddress: faker.location.streetAddress(),
+        city: faker.location.city(),
+        zipCode: faker.string.numeric(7),       // 7-digit Japanese postal code
+        phone: `+81 90 ${faker.string.numeric(4)} ${faker.string.numeric(4)}`, // Japanese mobile: +81 90-XXXX-XXXX
+      };
+    default:
+      return null;
+  }
+}
+
+/**
  * Generates FX transaction form data for UI tests.
- * Beneficiary name and identity number are randomised on every call.
+ * Beneficiary name, identity number, and country-specific address fields are
+ * randomised on every call.
  *
  * @param {object} options
- * @param {string} [options.amountUsd] - When set (or `randomizeSendAmountUsd`), derives `amountInput` via `toCentsInput` and `amount` display.
- * @param {boolean} [options.randomizeSendAmountUsd] - Pick a random `amountUsd` (ignored if `amountUsd` is already set).
- * @param {string} [options.beneficiaryFirstName] - Alias for `firstName`.
- * @param {string} [options.beneficiaryLastName] - Alias for `lastName`.
+ * @param {string} [options.countryCode]          - ISO alpha-2 destination country (default 'GB'). Drives payeeExtraFields.
+ * @param {string} [options.amountUsd]            - Fixed send amount; derives amountInput + amount display.
+ * @param {boolean} [options.randomizeSendAmountUsd] - Pick a random amountUsd (ignored if amountUsd is set).
+ * @param {string} [options.beneficiaryFirstName] - Alias for firstName.
+ * @param {string} [options.beneficiaryLastName]  - Alias for lastName.
  * @returns {object} FX transaction data
  */
 function generateFxTransactionData(options = {}) {
   const firstName =
-    options.firstName || options.beneficiaryFirstName || generateRandomName('first');
-  const lastName = options.lastName || options.beneficiaryLastName || generateRandomName('last');
+    options.firstName || options.beneficiaryFirstName || faker.person.firstName();
+  const lastName = options.lastName || options.beneficiaryLastName || faker.person.lastName();
 
   let amountUsd = null;
   if (options.amountUsd != null && options.amountUsd !== '') {
@@ -317,6 +316,8 @@ function generateFxTransactionData(options = {}) {
     amount = options.amount ?? '$55.00';
   }
 
+  const countryCode = options.countryCode ?? 'GB';
+
   return {
     beneficiaryFirstName: firstName,
     beneficiaryLastName: lastName,
@@ -328,6 +329,7 @@ function generateFxTransactionData(options = {}) {
     amountInput,
     amount,
     amountUsd,
+    payeeExtraFields: generatePayeeExtraFields(countryCode),
   };
 }
 
@@ -340,12 +342,6 @@ module.exports = {
   generateWirePaymentSchedule,
   generateFxTransactionData,
   generateRandomDigits,
-  toCentsInput,
-  formatUsdDisplay,
-  generateRandomName,
-  generateRandomStreetAddress,
-  generateRandomCity,
-  generateRandomBirthYear,
   generateRandomSSN,
-  generateUniqueSignupPhoneNumber
+  generateUniqueSignupPhoneNumber,
 };

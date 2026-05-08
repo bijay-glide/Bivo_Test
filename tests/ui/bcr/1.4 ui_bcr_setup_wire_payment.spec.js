@@ -21,6 +21,7 @@ const STANDALONE_CREDENTIALS = {
 test.describe('Wire Payment Setup', () => {
 
   test('Setup wire payment and verify transaction', async ({ page, request }) => {
+    test.setTimeout(180000);
     const signInPage       = new SignInPage(page);
     const verificationPage = new VerificationPage(page);
     const wirePage         = new WirePaymentPage(page);

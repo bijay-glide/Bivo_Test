@@ -3,8 +3,6 @@
  * Fetches OTP via identity API + Keycloak admin (no console output of secrets by default).
  */
 
-require('dotenv').config();
-
 function decodeOtp(encodedOtp) {
   return Buffer.from(encodedOtp, 'base64').toString('utf-8');
 }

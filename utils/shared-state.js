@@ -24,6 +24,16 @@ function activeStateFile() {
   return p.legacy;
 }
 
+function readStateFileOrThrow(file) {
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `Shared state file not found at ${file}.\n` +
+        `Run the signup test first (e.g. npm run test:ui:bcr:signup or npm run test:ui:userweb:signup)`
+    );
+  }
+  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+}
+
 function stripLegacyPhoneCountryField(obj) {
   if (!obj || typeof obj !== 'object') return;
   if ('phoneNumberWithCountryCode' in obj) {
@@ -67,13 +77,7 @@ function saveSignupData(data) {
 
 function loadSignupData() {
   const file = activeStateFile();
-  if (!fs.existsSync(file)) {
-    throw new Error(
-      `Shared state file not found at ${file}.\n` +
-        `Run the signup test first (e.g. npm run test:ui:bcr:signup or npm run test:ui:userweb:signup)`
-    );
-  }
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const data = readStateFileOrThrow(file);
   normalizePhoneInMemory(data);
   console.log(`\n📂 Shared state loaded from → ${file}`);
   console.log(`   Phone    : ${data.phoneNumber}`);
@@ -131,13 +135,7 @@ function tryLoadSignupData(maxAgeHours = 8) {
 
 function saveClientData({ clientId, accountNumber }) {
   const file = activeStateFile();
-  if (!fs.existsSync(file)) {
-    throw new Error(
-      `Shared state file not found at ${file}.\n` +
-        `Run the signup test first before saving client data.`
-    );
-  }
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const data = readStateFileOrThrow(file);
   data.clientId = clientId;
   data.accountNumber = accountNumber;
   data.clientSavedAt = new Date().toISOString();
@@ -154,13 +152,7 @@ function saveClientId(clientId) {
 
 function loadClientId() {
   const file = activeStateFile();
-  if (!fs.existsSync(file)) {
-    throw new Error(
-      `Shared state file not found at ${file}.\n` +
-        `Run the signup test first (e.g. npm run test:ui:bcr:signup or npm run test:ui:userweb:signup)`
-    );
-  }
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const data = readStateFileOrThrow(file);
   if (!data.clientId) {
     throw new Error(
       `clientId not found in shared state.\n` +
@@ -174,13 +166,7 @@ function loadClientId() {
 
 function loadAccountNumber() {
   const file = activeStateFile();
-  if (!fs.existsSync(file)) {
-    throw new Error(
-      `Shared state file not found at ${file}.\n` +
-        `Run the signup test first (e.g. npm run test:ui:bcr:signup or npm run test:ui:userweb:signup)`
-    );
-  }
-  const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  const data = readStateFileOrThrow(file);
   if (!data.accountNumber) {
     throw new Error(
       `accountNumber not found in shared state.\n` +
@@ -199,7 +185,7 @@ function saveExtendedState(fields) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf-8')) : {};
+  const existing = fs.existsSync(file) ? readStateFileOrThrow(file) : {};
 
   const data = {
     ...existing,

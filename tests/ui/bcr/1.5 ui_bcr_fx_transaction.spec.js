@@ -101,7 +101,11 @@ test.describe('FX Transaction', () => {
     // ─────────────────────────────────────────────────────────────────────────
     await test.step('Step 9 | Enter IBAN', async () => {
       await fxPage.enterIban(fxData.iban);
-      // await fxPage.fillIdentityDetails(fxData.identityType, fxData.identityNumber);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    await test.step('Step 9b | Identity verification (first-time payee only)', async () => {
+      await fxPage.handleIdentityStepIfPresent(fxData.identityType, fxData.identityNumber);
     });
 
     // ─────────────────────────────────────────────────────────────────────────

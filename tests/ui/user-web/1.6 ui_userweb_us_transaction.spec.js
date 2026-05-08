@@ -1,7 +1,7 @@
 require('./state-suite-env');
 const { test, expect } = require('../../../fixtures/ui-fixtures');
 const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { saveExtendedState } = require('../../../utils/shared-state');
+const { depositFundsViaWire } = require('../../../utils/transaction-helper');
 const { toCentsInput } = require('../../../utils/amount-input');
 const UsAchPaymentPage = require('../../../pages/UsAchPaymentPage');
 
@@ -36,33 +36,32 @@ test.describe('User-web US Payment', () => {
       bivoDdaNumber = loginResult?.bivo_dda_number || bivoDdaNumber;
       expect(bivoAccountNumber, 'bivo_account_number should be available from account API').toBeTruthy();
       expect(bivoDdaNumber, 'bivo_dda_number (ddaNumber) should be available from account API').toBeTruthy();
-      saveExtendedState({
-        bivo_account_number: bivoAccountNumber,
-        bivo_dda_number: bivoDdaNumber,
-      });
     });
 
-    await test.step('Step 2 | Navigate to Create US Payment', async () => {
+    await test.step('Step 2 | Pre-fund account via API', async () => {
+      await depositFundsViaWire(request, bivoAccountNumber, { amount: 500000 }); // $5000
+    });
+
+    await test.step('Step 3 | Navigate to Create US Payment', async () => {
       await usPaymentPage.navigateToCreateUsPayment();
     });
 
-    await test.step('Step 3 | Add payee and bank details + verify beneficiary account API', async () => {
+    await test.step('Step 4 | Add payee and bank details + verify beneficiary account API', async () => {
       await usPaymentPage.addPayee(US_PAYMENT_DATA.firstName, US_PAYMENT_DATA.lastName);
       const beneficiaryApi = await usPaymentPage.addBankDetailsAndCaptureBeneficiaryApi({
         accountNumber: US_PAYMENT_DATA.accountNumber,
         routingNumber: US_PAYMENT_DATA.routingNumber,
       });
       usAchAccountNumber = beneficiaryApi.bankAchAccountNumber || usAchAccountNumber;
-      saveExtendedState({ us_ach_accountNumber: usAchAccountNumber });
     });
 
-    await test.step('Step 4 | Verify vendor details and choose ACH', async () => {
+    await test.step('Step 5 | Verify vendor details and choose ACH', async () => {
       await usPaymentPage.verifyVendorDetailsAndSelectAch({
         usAchAccountLast4: usAchAccountNumber.slice(-4),
       });
     });
 
-    await test.step('Step 5 | Fill transfer details and continue', async () => {
+    await test.step('Step 6 | Fill transfer details and continue', async () => {
       await usPaymentPage.fillTransferDetailsAndContinue({
         amountInputValue,
         message: US_PAYMENT_DATA.message,
@@ -70,7 +69,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 6 | Verify transaction details screen', async () => {
+    await test.step('Step 7 | Verify transaction details screen', async () => {
       await usPaymentPage.verifyReviewDetails({
         firstName: US_PAYMENT_DATA.firstName,
         lastName: US_PAYMENT_DATA.lastName,
@@ -81,7 +80,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 7 | Submit transfer and verify transfer-fund API', async () => {
+    await test.step('Step 8 | Submit transfer and verify transfer-fund API', async () => {
       const captured = await usPaymentPage.submitTransferAndCaptureTransferFundApi();
       transferFundRequest = captured.transferFundRequest;
       transferCorrelationId = captured.correlationId;
@@ -91,7 +90,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 8 | Transactions API — row matches ACH transfer', async () => {
+    await test.step('Step 9 | Transactions API — row matches ACH transfer', async () => {
       await usPaymentPage.assertTransactionsApiAchDebitRow({
         accountNumber: bivoAccountNumber,
         correlationId: transferCorrelationId,

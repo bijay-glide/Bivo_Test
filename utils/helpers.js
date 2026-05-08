@@ -7,7 +7,7 @@
  */
 
 const { test } = require('@playwright/test');
-const { apiPost, apiGet } = require('./api-client');
+const { apiPost, apiGet, getOAuthToken } = require('./api-client');
 const { ENDPOINTS, buildEndpoint } = require('./endpoints');
 
 const BASE_URL = process.env.API_BASE_URL || 'https://devapi.bivotech.co';
@@ -46,6 +46,7 @@ function logRequest(method, endpoint, body = null) {
  */
 async function logResponse(response) {
   const body = await getResponseBody(response);
+  if (process.env.DEBUG !== 'true') return body;
   const separator = '='.repeat(50);
   console.log(`\n${separator}`);
   console.log(`RESPONSE: ${response.status()} ${response.statusText()}`);
@@ -162,7 +163,7 @@ async function createTestAccount(request, accountData, retries = 3) {
         throw error;
       }
 
-      const waitTime = attempt * 2000; // 2s, 4s, 6s
+      const waitTime = 2 ** attempt * 1000; // 2s, 4s, 8s
       console.log(`   Retrying in ${waitTime / 1000}s...`);
       await sleep(waitTime);
     }
@@ -175,31 +176,9 @@ async function grantAchLinkingPermission(request, clientId, options = {}) {
   const businessId = Object.prototype.hasOwnProperty.call(options, 'businessId')
     ? options.businessId
     : null;
-  const realm = options.realm || process.env.KEYCLOAK_REALM || 'glidecash';
+  const realm = options.realm || null;
 
-  const tokenResponse = await request.post(
-    `${process.env.KEYCLOAK_HOST}/realms/${realm}/protocol/openid-connect/token`,
-    {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      data: new URLSearchParams({
-        client_id: process.env.TRANSACTION_CLIENT_ID,
-        client_secret: process.env.TRANSACTION_CLIENT_SECRET,
-        grant_type: process.env.TRANSACTION_GRANT_TYPE,
-        glide_auth_type: 'client_credentials',
-      }).toString(),
-    },
-  );
-
-  if (tokenResponse.status() !== 200) {
-    const body = await tokenResponse.text();
-    throw new Error(`Permission token request failed (${tokenResponse.status()}): ${body}`);
-  }
-
-  const tokenBody = await tokenResponse.json();
-  const accessToken = tokenBody.access_token;
-  if (!accessToken) {
-    throw new Error('Permission token request succeeded but access_token is missing');
-  }
+  const accessToken = await getOAuthToken(request, realm);
 
   const addGroupsResponse = await request.post(
     `${process.env.HOST}/identity/v1/internal/user/add-groups`,
@@ -218,7 +197,6 @@ async function grantAchLinkingPermission(request, clientId, options = {}) {
   }
 
   return {
-    tokenStatus: tokenResponse.status(),
     addGroupsStatus: addGroupsResponse.status(),
   };
 }

@@ -19,7 +19,7 @@ const test = baseTest.extend({
       video: 'retain-on-failure',
     });
     await use(context);
-    await context.close();
+    await context.close().catch(() => {});
   },
 });
 

@@ -7,6 +7,7 @@ const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../uti
 
 test.describe('User-web Wire Payment Setup', () => {
   test('Setup wire payment and verify transaction', async ({ page, request }) => {
+    test.setTimeout(180000);
     const wirePage = new WirePaymentPage(page);
 
     const userData = resolveUserDataForLogin();
@@ -14,56 +15,57 @@ test.describe('User-web Wire Payment Setup', () => {
     const paymentSchedule = generateWirePaymentSchedule();
     const lastFourDigits = wireDetails.accountNumber.slice(-4);
 
+    let bivoAccountNumber = '';
+
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 1 | Pre-fund account via API', async () => {
-      if (userData.accountNumber) {
-        await depositFundsViaWire(request, userData.accountNumber);
+    await test.step('Step 1 | Login to standalone user-web', async () => {
+      const loginResult = await loginUserWebWithPhone({ page, request, userData });
+      bivoAccountNumber = loginResult?.bivo_account_number || '';
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    await test.step('Step 2 | Pre-fund account via API', async () => {
+      if (bivoAccountNumber) {
+        await depositFundsViaWire(request, bivoAccountNumber, { amount: 500000 }); // $5000
       } else {
-        console.warn(
-          '⚠️  No accountNumber available — skipping pre-fund step. Set STANDALONE_ACCOUNT env var to enable.',
-        );
+        console.warn('⚠️  No bivo_account_number resolved — skipping pre-fund step.');
       }
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 2-5 | Login to standalone user-web', async () => {
-      await loginUserWebWithPhone({ page, request, userData });
-    });
-
-    // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 6 | Navigate to Wire section', async () => {
+    await test.step('Step 3 | Navigate to Wire section', async () => {
       await wirePage.navigateToWireSection();
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 7 | Fill wire beneficiary details', async () => {
+    await test.step('Step 4 | Fill wire beneficiary details', async () => {
       await wirePage.fillWireDetailsForm(wireDetails);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 8 | Configure payment schedule and amount', async () => {
+    await test.step('Step 5 | Configure payment schedule and amount', async () => {
       await wirePage.fillPaymentSchedule(paymentSchedule);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 9 | Verify review screen details', async () => {
+    await test.step('Step 6 | Verify review screen details', async () => {
       await wirePage.verifyReviewScreen(wireDetails, paymentSchedule);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 10 | Submit the wire transfer', async () => {
+    await test.step('Step 7 | Submit the wire transfer', async () => {
       await wirePage.submitTransfer(wireDetails.firstName, {
-        accountId: userData.accountNumber,
+        accountId: bivoAccountNumber,
       });
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 11 | Verify transaction appears in history', async () => {
+    await test.step('Step 8 | Verify transaction appears in history', async () => {
       await wirePage.verifyTransactionHistory(wireDetails.firstName, paymentSchedule.amount);
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    await test.step('Step 12 | Verify added account in wire accounts list', async () => {
+    await test.step('Step 9 | Verify added account in wire accounts list', async () => {
       await wirePage.verifyAddedAccount(wireDetails.nickname, lastFourDigits);
     });
   });

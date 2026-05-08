@@ -1,8 +1,9 @@
 const { defineConfig } = require('@playwright/test');
 require('dotenv').config();
+const { getUiBaseUrl } = require('./utils/env');
 
 const uiServerUse = {
-  baseURL: process.env.HOST || 'https://bivo-dev.bivotech.co',
+  baseURL: getUiBaseUrl(),
   ignoreHTTPSErrors: true
 };
 
@@ -21,6 +22,10 @@ const userWebOnboardingFiles = [
 /** No dependency on onboarding — use with LOGIN_PHONE_RAW (and optional STANDALONE_*) in .env. */
 const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
 
+/** Multi-country FX suite — auth.setup primes OTP once; 8 tests then login in parallel (no OTP needed). */
+const userWebFxMultiCountryFile = 'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js';
+const userWebAuthSetupFile = 'ui/user-web/auth.setup.js';
+
 module.exports = defineConfig({
   testDir: './tests',
   timeout: 60000, // Global test timeout: 1 minute
@@ -31,7 +36,8 @@ module.exports = defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  // UI_WORKERS in .env controls parallel worker count; onboarding phases override with --workers=1.
+  workers: process.env.UI_WORKERS ? parseInt(process.env.UI_WORKERS, 10) : 1,
   reporter: [
     ['html'],
     ['list'],
@@ -60,7 +66,6 @@ module.exports = defineConfig({
       name: 'UI BCR onboarding',
       testMatch: bcrOnboardingFiles,
       fullyParallel: false,
-      workers: 1,
       use: { ...uiServerUse }
     },
     {
@@ -68,29 +73,37 @@ module.exports = defineConfig({
       testMatch: 'ui/bcr/*.spec.js',
       testIgnore: bcrOnboardingFiles,
       fullyParallel: true,
-      workers: process.env.CI ? 2 : 4,
       use: { ...uiServerUse }
     },
     {
       name: 'UI user-web onboarding',
       testMatch: userWebOnboardingFiles,
       fullyParallel: false,
-      workers: 1,
       use: { ...uiServerUse }
     },
     {
       name: 'UI user-web parallel',
       testMatch: 'ui/user-web/*.spec.js',
-      testIgnore: userWebOnboardingFiles,
+      testIgnore: [...userWebOnboardingFiles, userWebLinkCardOnlyFile, userWebFxMultiCountryFile],
       fullyParallel: true,
-      workers: process.env.CI ? 2 : 4,
       use: { ...uiServerUse }
     },
     {
       name: 'UI user-web link card only',
       testMatch: userWebLinkCardOnlyFile,
-      fullyParallel: false,
-      workers: 1,
+      fullyParallel: true,
+      use: { ...uiServerUse }
+    },
+    {
+      name: 'UI user-web auth setup',
+      testMatch: userWebAuthSetupFile,
+      use: { ...uiServerUse, trace: 'off', video: 'off' }
+    },
+    {
+      name: 'UI user-web FX multi-country',
+      testMatch: userWebFxMultiCountryFile,
+      fullyParallel: true,
+      dependencies: ['UI user-web auth setup'],
       use: { ...uiServerUse }
     }
   ]

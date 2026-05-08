@@ -1,9 +1,12 @@
 const { expect } = require('@playwright/test');
 
-const PAY_USER_WEB_SIGNIN =
-  'https://bivo-dev.bivotech.co/pay/user-web/auth/signin';
-const STANDALONE_USER_WEB_SIGNIN =
-  'https://bivo-dev.bivotech.co/user-web/auth/signin';
+const PAY_USER_WEB_SIGNIN_PATH = '/pay/user-web/auth/signin';
+const STANDALONE_USER_WEB_SIGNIN_PATH = '/user-web/auth/signin';
+
+// Delays that exist to let the UI settle — not arbitrary, but tied to observable timing.
+const PHONE_VALIDATION_DEBOUNCE_MS = 500;  // blur → validation → Next button enable
+const NEXT_BUTTON_ENABLE_WAIT_MS   = 1000; // extra wait before asserting Next is enabled
+const OTP_DISPATCH_WAIT_MS         = 6000; // phone submit → OTP SMS in flight
 
 class SignInPage {
   constructor(page) {
@@ -26,10 +29,10 @@ class SignInPage {
 
   // options.standaloneUserWeb: user-web signin URL vs pay-embedded (default).
   async goto(options = {}) {
-    const url = options.standaloneUserWeb
-      ? STANDALONE_USER_WEB_SIGNIN
-      : PAY_USER_WEB_SIGNIN;
-    await this.page.goto(url, {
+    const path = options.standaloneUserWeb
+      ? STANDALONE_USER_WEB_SIGNIN_PATH
+      : PAY_USER_WEB_SIGNIN_PATH;
+    await this.page.goto(path, {
       timeout: 200000,
     });
   }
@@ -59,17 +62,17 @@ class SignInPage {
     await this.mobileNumberInput.fill(valueToSet);
     // Blur the input so validation runs and the Next button can become enabled
     await this.outside.click();
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(PHONE_VALIDATION_DEBOUNCE_MS);
   }
 
   async clickNext() {
-    await this.page.waitForTimeout(1000);
+    await this.page.waitForTimeout(NEXT_BUTTON_ENABLE_WAIT_MS);
     // Wait for Next button to be enabled (e.g. after phone validation)
     await this.nextButton.waitFor({ state: 'visible', timeout: 10000 });
     await expect(this.nextButton).toBeEnabled({ timeout: 10000 });
     await this.nextButton.scrollIntoViewIfNeeded();
     await this.nextButton.click({ force: true });
-    await this.page.waitForTimeout(6000);
+    await this.page.waitForTimeout(OTP_DISPATCH_WAIT_MS);
   }
 
   async signInWithPhone(phoneNumber) {
