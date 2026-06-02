@@ -39,7 +39,7 @@ test.describe('User-web US Payment', () => {
     });
 
     await test.step('Step 2 | Pre-fund account via API', async () => {
-      await depositFundsViaWire(request, bivoAccountNumber, { amount: 500000 }); // $5000
+      await depositFundsViaWire(request, bivoAccountNumber, { amount: 5000 }); // $5000
     });
 
     await test.step('Step 3 | Navigate to Create US Payment', async () => {

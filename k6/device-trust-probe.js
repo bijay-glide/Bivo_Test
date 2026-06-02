@@ -41,6 +41,8 @@ export default function () {
   console.log(`   Max retries: ${MAX_RETRIES} per phone`);
   console.log('');
 
+  const noPasswordPhones = [];
+
   for (const phone of PHONES) {
     console.log(`── ${phone} ──────────────────────────────────────────`);
     let isTrusted = false;
@@ -49,6 +51,11 @@ export default function () {
       const login = passwordLogin(phone);
       if (!login) {
         console.error(`  [${attempt}/${MAX_RETRIES}] Hard failure — skipping ${phone}`);
+        break;
+      }
+      if (login.noPassword) {
+        console.error(`  ✗ No password set — complete the first-login flow for ${phone} before running the probe`);
+        noPasswordPhones.push(phone);
         break;
       }
 
@@ -77,12 +84,19 @@ export default function () {
       if (attempt < MAX_RETRIES) sleep(2);
     }
 
-    isTrusted ? trusted.push(phone) : failed.push(phone);
+    if (!noPasswordPhones.includes(phone)) {
+      isTrusted ? trusted.push(phone) : failed.push(phone);
+    }
   }
 
   console.log('\n══ RESULTS ════════════════════════════════════════════');
-  console.log(`  ✓ Trusted (${trusted.length}/${PHONES.length}): ${trusted.join(', ') || 'none'}`);
-  console.log(`  ✗ Failed  (${failed.length}/${PHONES.length}): ${failed.join(', ') || 'none'}`);
+  console.log(`  ✓ Trusted      (${trusted.length}/${PHONES.length}): ${trusted.join(', ') || 'none'}`);
+  console.log(`  ✗ Failed       (${failed.length}/${PHONES.length}): ${failed.join(', ') || 'none'}`);
+  console.log(`  ✗ No password  (${noPasswordPhones.length}/${PHONES.length}): ${noPasswordPhones.join(', ') || 'none'}`);
+  if (noPasswordPhones.length > 0) {
+    console.log('  → These accounts need the first-login flow completed (sign in with phone → OTP → set password).');
+    console.log('    Run the Playwright UI test 1.2 for each, or set passwords via admin API.');
+  }
   if (failed.length > 0) {
     console.log('  → Re-run probe for failed numbers or increase K6_PROBE_MAX_RETRIES:');
     console.log(`    k6 run k6/device-trust-probe.js -e K6_PROBE_MAX_RETRIES=${MAX_RETRIES + 2}`);

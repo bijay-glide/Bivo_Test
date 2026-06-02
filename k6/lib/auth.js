@@ -5,9 +5,9 @@ import { buildHeaders, rotateSession, DEVICE_INFO } from './helpers.js';
 
 // ── passwordLogin ─────────────────────────────────────────────────────────────
 // grant-type + password token only.
-// Returns { token, sessionId, needsOtp } or null on hard failure.
-//   needsOtp=false → device trusted, login complete.
-//   needsOtp=true  → device not trusted; caller must handle OTP.
+// Returns { token, sessionId, needsOtp } on success.
+// Returns { noPassword: true } when account has no password set (412).
+// Returns null on any other hard failure.
 export function passwordLogin(phone) {
   const grantRes = http.post(
     `${HOST}/identity/v1/grant-type`,
@@ -24,8 +24,14 @@ export function passwordLogin(phone) {
     JSON.stringify({ username: phone, grantType: 'password', deviceId: DEVICE_ID, password: PASSWORD }),
     { headers: buildHeaders(null) },
   );
+  if (tokenRes.status === 412) {
+    let msg = 'No password present';
+    try { msg = JSON.parse(tokenRes.body).userMessage || msg; } catch {}
+    console.error(`[auth] ${phone} — ${msg} (account needs first-login password setup)`);
+    return { noPassword: true };
+  }
   if (tokenRes.status !== 200) {
-    console.error(`[auth] password token failed for ${phone}: ${tokenRes.status}`);
+    console.error(`[auth] password token failed for ${phone}: ${tokenRes.status} — ${tokenRes.body}`);
     return null;
   }
 

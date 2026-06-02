@@ -16,7 +16,7 @@ import { sleep } from 'k6';
 import { VUS, ITERATIONS }                        from './lib/config.js';
 import { buildHeaders }                           from './lib/helpers.js';
 import { authenticate }                           from './lib/auth.js';
-import { runDashboard, runWire, runMoveFund, runACH } from './lib/flows.js';
+import { runDashboard, runWire, runMoveFund, runACH, runAddPayee } from './lib/flows.js';
 
 const PHONES = JSON.parse(open('./phones.json'));
 
@@ -59,5 +59,16 @@ export default function (users) {
   runDashboard(h, user, vu);  sleep(0.5);
   runWire(h, user, vu);       sleep(0.5);
   runMoveFund(h, user, vu);   sleep(0.5);
-  runACH(h, user, vu);        sleep(1);
+  runACH(h, user, vu);        sleep(0.5);
+  runAddPayee(h, user, vu);   sleep(1);
 }
+
+
+  // "6469102924",
+
+  // "2125288204",
+  // "6464090790",
+  // "6465395912",
+  // "4152987930",
+  // "6463760977",
+  // "2126912441"

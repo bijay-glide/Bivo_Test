@@ -3,7 +3,7 @@
 process.env.BIVO_UI_STATE_SUITE = 'userweb';
 
 const { test: setup } = require('@playwright/test');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
 
 const AUTH_STATE_FILE = 'test-results/auth-userweb.json';
 

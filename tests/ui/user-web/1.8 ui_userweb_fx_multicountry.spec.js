@@ -2,7 +2,7 @@
 process.env.BIVO_UI_STATE_SUITE = 'userweb';
 
 const { test } = require('@playwright/test');
-const { generateFxTransactionData } = require('../../../utils/test-data-generator');
+const { generateFxTransactionData, generateBankingDetails } = require('../../../utils/test-data-generator');
 const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
 const FxTransactionPage = require('../../../pages/FxTransactionPage');
 const { TOP_FX_COUNTRIES } = require('../../../utils/fx-countries');
@@ -47,7 +47,8 @@ test.describe('User-web FX — top destination countries', () => {
       });
 
       await test.step('Step 6 | Enter banking details', async () => {
-        await fxPage.enterBankingDetailsByChannel(config);
+        const bankingDetails = generateBankingDetails(countryCode);
+        await fxPage.enterBankingDetailsByChannel({ channel: config.channel, bankingDetails });
       });
 
       await test.step('Step 7 | Identity verification if present', async () => {

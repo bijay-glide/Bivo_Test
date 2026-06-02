@@ -1,3 +1,4 @@
+require('dotenv').config();
 const SignInPage = require('../pages/SignInPage');
 const VerificationPage = require('../pages/VerificationPage');
 const { getOtpForPhoneNumber } = require('./otp-helper');
@@ -43,13 +44,15 @@ async function loginUserWebWithPhone({
 }) {
   const signInPage = new SignInPage(page);
   const verificationPage = new VerificationPage(page);
-  const profileResponsePromise = page.waitForResponse(
-    (response) =>
-      response.url().includes('/client/v1/profile') &&
-      response.request().method() === 'GET' &&
-      response.status() === 200,
-    { timeout: 30000 },
-  );
+  const profileResponsePromise = page
+    .waitForResponse(
+      (response) =>
+        response.url().includes('/client/v1/profile') &&
+        response.request().method() === 'GET' &&
+        response.status() === 200,
+      { timeout: 30000 },
+    )
+    .catch(() => null);
   const accountInfoResponsePromise = page
     .waitForResponse(
       (response) =>

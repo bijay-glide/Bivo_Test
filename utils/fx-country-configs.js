@@ -6,7 +6,9 @@
  *   currencyCode — display / assertion use
  *   country      — ISO alpha-2, matches personal-info POST body
  *   channel      — 'iban' | 'bsb' | 'bank' | ... (drives enterBankingDetailsByChannel)
- *   bankingDetails — static test values for the banking-details form step
+ *   bankingDetails — field-shape reference only (NOT used directly in tests).
+ *                    Tests call generateBankingDetails(countryCode) from test-data-generator.js
+ *                    to get fresh random values on every run.
  *
  * Add a new country here + record its payee/banking steps → 1.8 picks it up automatically.
  */
@@ -98,9 +100,9 @@ const COUNTRY_BANKING_CONFIGS = {
     country: 'CN',
     channel: 'alipay', // "Deliver to Alipay" — mobile + wallet provider dropdown + SWIFT + bank name
     bankingDetails: {
-      phone: '13912345678',
+      phone: '13812345678',        // 11 digits, no prefix — system adds +86
       walletProvider: 'Alipay',
-      swiftCode: '21005366',
+      swiftCode: '21005366',       // 8 digits
       bankName: 'Bank of china',
     },
   },

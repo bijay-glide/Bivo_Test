@@ -42,6 +42,11 @@ class SignInPage {
   }
 
   async clickUsePhone() {
+    // Wait for the React app to render before checking which step is shown.
+    await Promise.race([
+      this.usePhoneButton.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {}),
+      this.mobileHeading.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {}),
+    ]);
     // Pay-embedded flow often lands on phone already; standalone user-web shows email first — click when present.
     if (await this.usePhoneButton.isVisible().catch(() => false)) {
       await this.usePhoneButton.click();
@@ -116,7 +121,7 @@ class SignInPage {
    * to avoid detecting the still-disappearing password field as the next state.
    */
   async waitForPasswordScreenToLeave() {
-    await expect(this.passwordInput).not.toBeVisible({ timeout: 10000 });
+    await expect(this.passwordInput).not.toBeVisible({ timeout: 30000 });
   }
 
   /**

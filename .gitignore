@@ -37,6 +37,13 @@ videos/
 # Playwright UI cache (persistent context for faster loads)
 .playwright-ui-cache/
 
+# Shared onboarding state — survives between Playwright runs (outside test-results/)
+.bivo-state/
+
 # Claude Code
 .claude/
 CLAUDE.md
+
+# Local Playwright CLI binary and legacy API test package (not part of this repo)
+playwright
+playwright-bivo-api-tests@1.0.0

@@ -10,6 +10,7 @@
     "show:report": "playwright show-report",
     "pw:ui":       "playwright test --ui",
     "pw:ui:api":   "playwright test --ui --project=\"API Tests\"",
+    "pw:ui:userweb": "playwright test --ui --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\" --project=\"UI user-web link card only\" --project=\"UI user-web FX multi-country\"",
 
     "test:api":                   "playwright test --project=\"API Tests\" tests/api/",
     "test:api:create":            "playwright test --project=\"API Tests\" tests/api/01-create-client-account.spec.js",
@@ -31,7 +32,7 @@
     "test:ui:bcr:fx":             "playwright test --no-deps --project=\"UI BCR parallel\" \"tests/ui/bcr/1.5 ui_bcr_fx_transaction.spec.js\"",
 
     "test:ui:userweb":            "playwright test --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\"",
-    "test:ui:userweb:full":       "playwright test --workers=1 --project=\"UI user-web onboarding\" && playwright test --project=\"UI user-web parallel\" --project=\"UI user-web link card only\" --project=\"UI user-web FX multi-country\"",
+    "test:ui:userweb:full":       "playwright test --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\" --project=\"UI user-web link card only\" --project=\"UI user-web FX multi-country\"",
     "test:ui:userweb:onboarding": "playwright test --workers=1 --project=\"UI user-web onboarding\"",
     "test:ui:userweb:parallel-all": "playwright test --project=\"UI user-web parallel\" --project=\"UI user-web link card only\" --project=\"UI user-web FX multi-country\"",
     "test:ui:userweb:wire":       "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js\"",
@@ -39,6 +40,7 @@
     "test:ui:userweb:linkcard":   "playwright test --project=\"UI user-web link card only\"",
     "test:ui:userweb:fx-multi":   "playwright test --workers=8 --project=\"UI user-web FX multi-country\"",
     "test:ui:userweb:movemoney":  "playwright test --headed --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.9 ui_userweb_movemoney.spec.js\"",
+    "test:ui:userweb:payee":     "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.10 ui_userweb_payee_add.spec.js\"",
 
     "capture:apis":              "CAPTURE_APIS=1 playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js\" \"tests/ui/user-web/1.6 ui_userweb_us_transaction.spec.js\" \"tests/ui/user-web/1.9 ui_userweb_movemoney.spec.js\"",
     "capture:apis:linkcard":     "CAPTURE_APIS=1 playwright test --no-deps --project=\"UI user-web link card only\"",

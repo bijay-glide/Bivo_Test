@@ -1,4 +1,4 @@
-require('./state-suite-env');
+require('../state-suite-env');
 const path = require('path');
 const fs = require('fs');
 const { test, expect } = require('../../../fixtures/ui-fixtures');

@@ -333,6 +333,116 @@ function generateFxTransactionData(options = {}) {
   };
 }
 
+// Static prefix used across all auto-generated numeric banking fields (5 digits).
+// Keeps the first digits recognisable as automated test data.
+const BIVO_NUMERIC_PREFIX = '98765';
+
+/**
+ * Generates a random SWIFT / BIC-shaped code of the given length.
+ * First 5 digits are always BIVO_NUMERIC_PREFIX so runs are identifiable.
+ * Supports 8-digit and 11-digit lengths.
+ *
+ * @param {8|11} length
+ * @returns {string}
+ */
+function generateSwiftCode(length = 8) {
+  return BIVO_NUMERIC_PREFIX + generateRandomDigits(length - BIVO_NUMERIC_PREFIX.length);
+}
+
+/**
+ * Generates a 11-digit Chinese mobile number without any country-code prefix.
+ * Prefix "138" identifies automated test data; the system adds +86 automatically.
+ *
+ * @returns {string}  e.g. "13852904371"
+ */
+function generateChinesePhoneNumber() {
+  return '138' + generateRandomDigits(8);
+}
+
+/**
+ * Generates a fake bank name with a "Bivo " prefix so automated entries are easy to spot.
+ *
+ * @returns {string}  e.g. "Bivo Henderson LLC"
+ */
+function generateBivoBankName() {
+  return 'Bivo ' + faker.company.name().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Returns freshly randomised banking-details for the given destination country.
+ * Use this in tests instead of the static bankingDetails from COUNTRY_BANKING_CONFIGS.
+ *
+ * Length rules (all-digit fields):
+ *   8 digits  → BIVO_NUMERIC_PREFIX (5) + 3 random
+ *   9 digits  → "987" (3) + 6 random
+ *  12 digits  → BIVO_NUMERIC_PREFIX (5) + 7 random
+ *  15 digits  → BIVO_NUMERIC_PREFIX (5) + 10 random
+ *   3 digits  → fully random (too short for a useful prefix)
+ *   6 digits  → "987" (3) + 3 random
+ *
+ * @param {string} countryCode  ISO alpha-2, e.g. 'CN', 'JP', 'HK'
+ * @returns {object}
+ */
+function generateBankingDetails(countryCode) {
+  switch (countryCode) {
+    case 'GB':
+      // IBAN has a strict check-digit algorithm — keep static to avoid validation failures.
+      return { iban: 'GB26542316456541232134' };
+
+    case 'AU':
+      return {
+        bankName:      generateBivoBankName(),
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
+        bsbCode:       '987' + generateRandomDigits(3),                 // 6 digits
+      };
+
+    case 'SV':
+      return { dui: '987' + generateRandomDigits(6) }; // 9 digits
+
+    case 'IN':
+      return {
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(10), // 15 digits
+        // IFSC format is strict (BANK-0-BRANCH) — keep static to pass server validation.
+        ifscCode: 'IDIB000N044',
+      };
+
+    case 'JP':
+      return {
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
+        swiftCode:     generateSwiftCode(8),
+        bankCode:      generateRandomDigits(3),                          // 3 digits (too short for prefix)
+        branchCode:    generateRandomDigits(3),                          // 3 digits
+        accountType:   'Savings',
+      };
+
+    case 'HK':
+      return {
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
+        bankName:      generateBivoBankName(),
+        bankCode:      generateRandomDigits(3),                          // 3 digits
+        branchCode:    generateRandomDigits(3),                          // 3 digits
+        swiftCode:     generateSwiftCode(8),
+      };
+
+    case 'MX':
+      return {
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
+      };
+
+    case 'CN':
+      return {
+        // 11 digits, no country-code prefix — system already prepends +86.
+        phone:          generateChinesePhoneNumber(),
+        walletProvider: 'Alipay',
+        swiftCode:      generateSwiftCode(8),
+        bankName:       generateBivoBankName(),
+      };
+
+    default:
+      throw new Error(`generateBankingDetails: no config for country "${countryCode}"`);
+  }
+}
+
 module.exports = {
   generateUserTestData,
   generateIncomingWireData,
@@ -341,6 +451,8 @@ module.exports = {
   generateWireFormData,
   generateWirePaymentSchedule,
   generateFxTransactionData,
+  generateBankingDetails,
+  generatePayeeExtraFields,
   generateRandomDigits,
   generateRandomSSN,
   generateUniqueSignupPhoneNumber,

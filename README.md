@@ -124,6 +124,87 @@ npx playwright test --debug
 
 Traces: `npx playwright show-trace path/to/trace.zip`
 
+## Load Testing (k6)
+
+Performance tests live in `k6/` and use [Grafana k6](https://k6.io/). They hit the sandbox REST API directly — no browser, no Playwright.
+
+### Prerequisites
+
+```bash
+brew install k6
+```
+
+Add these three variables to your `.env`:
+
+| Variable | Purpose |
+|----------|---------|
+| `BIVO_DEVICE_ID` | Device ID registered during the probe step |
+| `BIVO_ITERATIONS` | How many times each VU runs the full flow |
+| `BIVO_PROBE_MAX_RETRIES` | Max OTP attempts per phone during the probe |
+
+Phones under test are listed in `k6/phones.json`. Adding a phone there automatically adds a VU on the next run.
+
+### Two-step workflow
+
+**Step 1 — establish device trust** (run once per set of phones):
+
+```bash
+npm run k6:probe
+```
+
+This iterates through every phone in `phones.json` and performs OTP + device registration so future logins skip the OTP challenge. Each phone shows ✓ or ✗ in the summary. Re-run with a higher retry count if any phones fail:
+
+```bash
+k6 run k6/device-trust-probe.js -e BIVO_PROBE_MAX_RETRIES=5
+```
+
+**Step 2 — run the load test** (all phones must be trusted first):
+
+```bash
+npm run k6:load
+```
+
+Or with the live dashboard open at `http://localhost:5665`:
+
+```bash
+npm run k6:load:dashboard
+```
+
+### What each VU does
+
+One VU is assigned per phone. Each VU runs `BIVO_ITERATIONS` times through the full flow:
+
+| Flow | Endpoints | Steps |
+|------|-----------|-------|
+| Dashboard | `/dashboard`, `/permissions`, `/profile`, `/accountbalance`, `/transactions`, `/currencies` | 1–6 |
+| Wire withdrawal | `POST /beneficiary`, `GET /beneficiary`, `POST /withdraw-fund` | 7–9 |
+| Move money | `POST /move-fund` | 10 |
+| US ACH | `POST /personal-info`, `POST /account`, `POST /transfer-fund` | 11–13 |
+
+### Thresholds
+
+| Metric | Threshold |
+|--------|-----------|
+| `http_req_failed` | < 5% |
+| `http_req_duration p(95)` | < 5 000 ms |
+
+k6 exits non-zero if either threshold is breached.
+
+### File structure
+
+```
+k6/
+  lib/
+    config.js    — all env var constants (uses BIVO_ prefix to avoid k6 reserved names)
+    helpers.js   — buildHeaders, rotateSession, DEVICE_INFO, step logger, utils
+    auth.js      — passwordLogin, authenticate
+    otp.js       — fetchOtp, fullOtpLogin  (probe only)
+    flows.js     — runDashboard, runWire, runMoveFund, runACH  (load test only)
+  load-test.js          — options + setup() + default VU entry point
+  device-trust-probe.js — options + probe loop
+  phones.json           — list of test phone numbers
+```
+
 ---
 
 Author: Bijay

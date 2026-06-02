@@ -1,11 +1,11 @@
-// Shared state under test-results/: suite-specific JSON when BIVO_UI_STATE_SUITE is set
-// (see tests/ui/bcr/state-suite-env.js and tests/ui/user-web/state-suite-env.js).
+// Shared state under .bivo-state/: suite-specific JSON when BIVO_UI_STATE_SUITE is set.
+// Stored outside test-results/ so Playwright's per-run cleanup does not delete it.
 // tryLoadSignupData also considers legacy shared-state.json (newest valid file wins).
 
 const fs = require('fs');
 const path = require('path');
 
-const RESULTS_DIR = path.join(process.cwd(), 'test-results');
+const RESULTS_DIR = path.join(process.cwd(), '.bivo-state');
 
 function statePaths() {
   return {
