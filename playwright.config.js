@@ -13,18 +13,14 @@ const bcrOnboardingFiles = [
   'ui/bcr/1.3 ui_bcr_first_login_setup_payment.spec.js'
 ];
 
-const userWebOnboardingFiles = [
-  'ui/user-web/1.1 ui_userweb_signup.spec.js',
-  'ui/user-web/1.2 ui_userweb_first_login.spec.js',
-  'ui/user-web/1.3 ui_userweb_first_login_setup_payment.spec.js'
-];
+// Merged serial spec: 1.1 → 1.2 → 1.3 run in order on one worker via test.describe.configure({ mode: 'serial' }).
+// Originals backed up at tests/ui/user-web/legacy/*.spec.js.bak — restore them if you need to revert.
+const userWebOnboardingFiles = ['ui/user-web/onboarding.spec.js'];
 
-/** No dependency on onboarding — use with LOGIN_PHONE_RAW (and optional STANDALONE_*) in .env. */
 const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
 
-/** Multi-country FX suite — auth.setup primes OTP once; 8 tests then login in parallel (no OTP needed). */
+/** Multi-country FX suite — each test logs in independently. */
 const userWebFxMultiCountryFile = 'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js';
-const userWebAuthSetupFile = 'ui/user-web/auth.setup.js';
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -83,27 +79,27 @@ module.exports = defineConfig({
     },
     {
       name: 'UI user-web parallel',
-      testMatch: 'ui/user-web/*.spec.js',
-      testIgnore: [...userWebOnboardingFiles, userWebLinkCardOnlyFile, userWebFxMultiCountryFile],
+      testMatch: [
+        'ui/user-web/1.6*',
+        'ui/user-web/1.9*',
+        'ui/user-web/1.10*',
+      ],
       fullyParallel: true,
+      dependencies: ['UI user-web onboarding'],
       use: { ...uiServerUse }
     },
     {
       name: 'UI user-web link card only',
       testMatch: userWebLinkCardOnlyFile,
       fullyParallel: true,
+      dependencies: ['UI user-web onboarding'],
       use: { ...uiServerUse }
-    },
-    {
-      name: 'UI user-web auth setup',
-      testMatch: userWebAuthSetupFile,
-      use: { ...uiServerUse, trace: 'off', video: 'off' }
     },
     {
       name: 'UI user-web FX multi-country',
       testMatch: userWebFxMultiCountryFile,
       fullyParallel: true,
-      dependencies: ['UI user-web auth setup'],
+      dependencies: ['UI user-web onboarding'],
       use: { ...uiServerUse }
     }
   ]

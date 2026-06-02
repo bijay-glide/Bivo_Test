@@ -24,8 +24,7 @@ class FxTransactionPage {
     // "You send" input on the Send Money screen — look for the input inside the "You send" card
     this.sendAmountInput = page.locator('div').filter({ hasText: /^You send$/ }).locator('input').first();
     this.recipientAmountInput = page.locator('div').filter({ hasText: /^Recipient gets$/ }).locator('input').first();
-    // Country picker items show "Country Name (CODE)" — match the unique code in parentheses
-    this.countrySelect = (code) => page.getByText(`(${code})`).first();
+    this.countrySelect = (code) => page.getByTestId(`country-select-${code}`);
   }
 
   // ─── Navigation ────────────────────────────────────────────────────────────
@@ -556,7 +555,10 @@ class FxTransactionPage {
       { timeout: 45000 },
     );
 
-    await this.page.getByRole('button', { name: 'Confirm Transaction' }).click();
+    // Button can stay in "Loading..." state while exchange rates are fetched (notably USD→USD for SV).
+    const confirmBtn = this.page.getByRole('button', { name: 'Confirm Transaction' });
+    await expect(confirmBtn).toBeEnabled({ timeout: 20000 });
+    await confirmBtn.click();
 
     const paymentResponse = await paymentPromise;
     let paymentRequest = {};
