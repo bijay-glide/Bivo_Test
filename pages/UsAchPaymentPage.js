@@ -244,6 +244,41 @@ class UsAchPaymentPage {
       }
     }
 
+    // Paginated fallback: the UI reload fetches only the first page of results.
+    // If the API defaults to oldest-first sort and the account has many transactions,
+    // the new ACH row lands beyond page 0. Scan pages 0-9 per attempt to cover
+    // accounts where hundreds of prior transactions have accumulated.
+    if (correlationId && !this.findTransactionByCorrelationId(transactions, correlationId)) {
+      const token = await this.page.evaluate(() => {
+        try {
+          const root = JSON.parse(localStorage.getItem('persist:root') || '{}');
+          const auth = JSON.parse(root.authentication || '{}');
+          return auth.loginData?.accessToken || null;
+        } catch { return null; }
+      });
+
+      if (token) {
+        const host = process.env.HOST || 'https://api-sandbox.bivotech.co';
+        const tenant = process.env.TENANT_IDENTIFIER || '';
+        const headers = { Authorization: `Bearer ${token}`, 'X-Tenant-Identifier': tenant };
+
+        for (let attempt = 0; attempt < 3 && !this.findTransactionByCorrelationId(transactions, correlationId); attempt++) {
+          if (attempt > 0) await this.page.waitForTimeout(5000);
+          let scanned = [];
+          for (let pg = 0; pg < 10; pg++) {
+            const url = `${host}/transactions/v1/transactions?accountId=${accountNumber}&page=${pg}&size=100`;
+            const res = await this.page.request.get(url, { headers });
+            if (!res.ok()) break;
+            const pageItems = extractTransactions(await res.json());
+            if (!pageItems.length) break;
+            scanned = [...scanned, ...pageItems];
+            if (this.findTransactionByCorrelationId(scanned, correlationId)) break;
+          }
+          if (scanned.length > 0) transactions = scanned;
+        }
+      }
+    }
+
     expect(
       transactions.length,
       'transactions API should return at least one transaction row',

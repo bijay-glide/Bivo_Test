@@ -39,8 +39,11 @@
     "test:ui:userweb:us":         "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.6 ui_userweb_us_transaction.spec.js\"",
     "test:ui:userweb:linkcard":   "playwright test --project=\"UI user-web link card only\"",
     "test:ui:userweb:fx-multi":   "playwright test --workers=8 --project=\"UI user-web FX multi-country\"",
+    "test:ui:userweb:fx-multi:individual": "playwright test --workers=8 --no-deps --project=\"UI user-web FX multi-country\" \"tests/ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js\"",
+    "test:ui:userweb:fx-multi:business":   "playwright test --workers=8 --no-deps --project=\"UI user-web FX multi-country\" \"tests/ui/user-web/1.8b ui_userweb_fx_multicountry_business.spec.js\"",
     "test:ui:userweb:movemoney":  "playwright test --headed --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.9 ui_userweb_movemoney.spec.js\"",
-    "test:ui:userweb:payee":     "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.10 ui_userweb_payee_add.spec.js\"",
+    "test:ui:userweb:payee":      "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.10 ui_userweb_payee_add.spec.js\"",
+    "test:ui:userweb:settings-auth": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.11 ui_userweb_settings_auth.spec.js\"",
 
     "capture:apis":              "CAPTURE_APIS=1 playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js\" \"tests/ui/user-web/1.6 ui_userweb_us_transaction.spec.js\" \"tests/ui/user-web/1.9 ui_userweb_movemoney.spec.js\"",
     "capture:apis:linkcard":     "CAPTURE_APIS=1 playwright test --no-deps --project=\"UI user-web link card only\"",

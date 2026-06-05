@@ -98,12 +98,25 @@ const COUNTRY_BANKING_CONFIGS = {
     currencyId: null, // TODO: populate from GET /beneficiary/currencies
     currencyCode: 'CNY',
     country: 'CN',
-    channel: 'alipay', // "Deliver to Alipay" — mobile + wallet provider dropdown + SWIFT + bank name
+    channel: 'alipay',         // individual: "Deliver to Alipay" — mobile + wallet + SWIFT + bank name
+    businessChannel: 'nz_bank', // business:    "Deliver to Bank Deposit" — account + SWIFT + bank name
     bankingDetails: {
       phone: '13812345678',        // 11 digits, no prefix — system adds +86
       walletProvider: 'Alipay',
       swiftCode: '21005366',       // 8 digits
       bankName: 'Bank of china',
+    },
+  },
+
+  NZ: {
+    currencyId: null, // TODO: populate from GET /beneficiary/currencies
+    currencyCode: 'NZD',
+    country: 'NZ',
+    channel: 'nz_bank', // "Deliver to Bank Deposit" — account number + bank name + optional SWIFT code
+    bankingDetails: {
+      accountNumber: '123412346667',
+      bankName: 'Bank of New Zealand',
+      swiftCode: '98765321',
     },
   },
 

@@ -12,6 +12,7 @@ function statePaths() {
     legacy: path.join(RESULTS_DIR, 'shared-state.json'),
     bcr: path.join(RESULTS_DIR, 'shared-state-bcr.json'),
     userweb: path.join(RESULTS_DIR, 'shared-state-userweb.json'),
+    buweb: path.join(RESULTS_DIR, 'shared-state-buweb.json'),
   };
 }
 
@@ -21,6 +22,7 @@ function activeStateFile() {
   const p = statePaths();
   if (suite === 'bcr') return p.bcr;
   if (suite === 'userweb') return p.userweb;
+  if (suite === 'buweb') return p.buweb;
   return p.legacy;
 }
 

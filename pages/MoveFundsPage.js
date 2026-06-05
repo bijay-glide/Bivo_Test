@@ -158,8 +158,9 @@ class MoveFundsPage {
       }
     }
 
-    // The UI fetches only size=2 transactions. If the move-fund transaction is older than
-    // the two most recent, fall back to a direct authenticated API call with size=100.
+    // Fallback: direct authenticated API scan when the UI page-size misses the transaction.
+    // Paginates pages 0-9 (up to 1000 rows) per attempt — handles accounts where the API
+    // defaults to oldest-first sort and the new transaction lands beyond the first page.
     if (paymentIdentifier && !this.findTransactionByPaymentIdentifier(transactions, paymentIdentifier)) {
       const token = await this.page.evaluate(() => {
         try {
@@ -172,13 +173,21 @@ class MoveFundsPage {
       if (token) {
         const host = process.env.HOST || 'https://api-sandbox.bivotech.co';
         const tenant = process.env.TENANT_IDENTIFIER || '';
-        const url = `${host}/transactions/v1/transactions?accountId=${accountNumber}&page=0&size=100`;
-        for (let attempt = 0; attempt < 5 && !this.findTransactionByPaymentIdentifier(transactions, paymentIdentifier); attempt++) {
+        const headers = { Authorization: `Bearer ${token}`, 'X-Tenant-Identifier': tenant };
+
+        for (let attempt = 0; attempt < 3 && !this.findTransactionByPaymentIdentifier(transactions, paymentIdentifier); attempt++) {
           if (attempt > 0) await this.page.waitForTimeout(5000);
-          const res = await this.page.request.get(url, {
-            headers: { Authorization: `Bearer ${token}`, 'X-Tenant-Identifier': tenant },
-          });
-          if (res.ok()) transactions = extractTransactions(await res.json());
+          let scanned = [];
+          for (let pg = 0; pg < 10; pg++) {
+            const url = `${host}/transactions/v1/transactions?accountId=${accountNumber}&page=${pg}&size=100`;
+            const res = await this.page.request.get(url, { headers });
+            if (!res.ok()) break;
+            const pageItems = extractTransactions(await res.json());
+            if (!pageItems.length) break;
+            scanned = [...scanned, ...pageItems];
+            if (this.findTransactionByPaymentIdentifier(scanned, paymentIdentifier)) break;
+          }
+          if (scanned.length > 0) transactions = scanned;
         }
       }
     }

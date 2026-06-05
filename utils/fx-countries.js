@@ -18,6 +18,6 @@ const FX_COUNTRIES = [
 // Active countries for the parallel smoke run — only countries with a full config
 // in utils/fx-country-configs.js should be listed here.
 // Add DE, FR, CA once their recordings are wired up in fx-country-configs.js.
-const TOP_FX_COUNTRIES = ['GB', 'AU', 'IN', 'JP', 'HK', 'CN', 'MX'];
+const TOP_FX_COUNTRIES = ['GB', 'AU', 'IN', 'JP', 'HK', 'CN', 'MX', 'NZ'];
 
 module.exports = { FX_COUNTRIES, TOP_FX_COUNTRIES };
