@@ -31,6 +31,9 @@
     "test:ui:bcr:wire":           "playwright test --no-deps --project=\"UI BCR parallel\" \"tests/ui/bcr/1.4 ui_bcr_setup_wire_payment.spec.js\"",
     "test:ui:bcr:fx":             "playwright test --no-deps --project=\"UI BCR parallel\" \"tests/ui/bcr/1.5 ui_bcr_fx_transaction.spec.js\"",
 
+    "test:ui:buweb":              "playwright test --project=\"UI bu-web onboarding\"",
+    "test:ui:buweb:onboarding":  "playwright test --workers=1 --project=\"UI bu-web onboarding\"",
+
     "test:ui:userweb":            "playwright test --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\"",
     "test:ui:userweb:full":       "playwright test --project=\"UI user-web onboarding\" --project=\"UI user-web parallel\" --project=\"UI user-web link card only\" --project=\"UI user-web FX multi-country\"",
     "test:ui:userweb:onboarding": "playwright test --workers=1 --project=\"UI user-web onboarding\"",
@@ -41,6 +44,7 @@
     "test:ui:userweb:fx-multi":   "playwright test --workers=8 --project=\"UI user-web FX multi-country\"",
     "test:ui:userweb:fx-multi:individual": "playwright test --workers=8 --no-deps --project=\"UI user-web FX multi-country\" \"tests/ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js\"",
     "test:ui:userweb:fx-multi:business":   "playwright test --workers=8 --no-deps --project=\"UI user-web FX multi-country\" \"tests/ui/user-web/1.8b ui_userweb_fx_multicountry_business.spec.js\"",
+    "test:ui:userweb:uk-fx":      "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.9b ui_userweb_uk_fx.spec.js\"",
     "test:ui:userweb:movemoney":  "playwright test --headed --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.9 ui_userweb_movemoney.spec.js\"",
     "test:ui:userweb:payee":      "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.10 ui_userweb_payee_add.spec.js\"",
     "test:ui:userweb:settings-auth": "playwright test --no-deps --project=\"UI user-web parallel\" \"tests/ui/user-web/1.11 ui_userweb_settings_auth.spec.js\"",

@@ -1,135 +1,125 @@
-import { test, expect } from '@playwright/test';
+require('./state-suite-env');
+const { test, expect } = require('../../../fixtures/ui-fixtures');
+const { getOtpForBusinessEmail } = require('../../../utils/otp-helper');
+const { generateBuWebTestData } = require('../../../utils/test-data-generator');
+const VerificationPage = require('../../../pages/VerificationPage');
+const BuWebSignInPage = require('../../../pages/BuWebSignInPage');
+const BuWebGetStartedPage = require('../../../pages/BuWebGetStartedPage');
+const BuWebBusinessAddressPage = require('../../../pages/BuWebBusinessAddressPage');
+const BuWebBusinessVerificationPage = require('../../../pages/BuWebBusinessVerificationPage');
+const BuWebBeneficialOwnerPage = require('../../../pages/BuWebBeneficialOwnerPage');
+const BuWebAdditionalInfoPage = require('../../../pages/BuWebAdditionalInfoPage');
+const BuWebAgreementsPage = require('../../../pages/BuWebAgreementsPage');
 
-test('test', async ({ page }) => {
-  await page.goto('https://sandbox.bivotech.co/bu-web/auth/signin');
-  await page.getByRole('textbox', { name: 'Enter your email' }).click();
-  await page.getByRole('textbox', { name: 'Enter your email' }).fill('curysevim@example.com');
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('textbox', { name: 'Please enter verification' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('textbox', { name: 'First name' }).click();
-  await page.getByRole('textbox', { name: 'First name' }).fill('First');
-  await page.getByRole('textbox', { name: 'Last name' }).click();
-  await page.getByRole('textbox', { name: 'Last name' }).fill('USer');
-  await page.getByRole('textbox', { name: 'Company name' }).click();
-  await page.getByRole('textbox', { name: 'Company name' }).fill('Bivo Company');
-  await page.getByRole('textbox', { name: 'Company website' }).click();
-  await page.getByRole('textbox', { name: 'Company website' }).fill('www.bivo.com');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByRole('heading')).toContainText('Business Address');
-  await expect(page.locator('#root')).toContainText('United States of America');
-  await page.getByRole('textbox', { name: 'Street address (no PO box)' }).click();
-  await page.getByRole('textbox', { name: 'Street address (no PO box)' }).fill('125 Waters Streets');
-  await page.getByText('Country').click();
-  await page.getByRole('textbox', { name: 'Enter suite / office / floor' }).click();
-  await page.getByRole('textbox', { name: 'Enter suite / office / floor' }).fill('three');
-  await page.getByRole('textbox', { name: 'City' }).click();
-  await page.getByRole('textbox', { name: 'City' }).fill('City OF Waters');
-  await page.getByRole('button', { name: 'Enter state' }).click();
-  await page.getByRole('button', { name: 'AK' }).click();
-  await page.getByRole('textbox', { name: 'Zip code' }).click();
-  await page.getByRole('textbox', { name: 'Zip code' }).fill('12300');
-  await page.locator('.check-wrapper').first().click();
-  await page.locator('div:nth-child(2) > .d-flex > div > .bivo-check-box > label > .check-wrapper').click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('#root')).toContainText('Dear First USer,');
-  await expect(page.locator('#root')).toContainText('Bivo welcomes you! To finalize your application, we kindly request that you complete the Business Verification process. For any questions, please reach us via support@bivocash.com or (844) 888-2486. We are here to help!');
-  await expect(page.locator('#root')).toContainText('Business Verification');
-  await page.getByRole('link', { name: 'Business Verification Business Verification' }).click();
-  await page.locator('div').filter({ hasText: /^Business Registration Document$/ }).first().click();
-  await expect(page.locator('#root')).toContainText('Please email the document to support@bivocash.com');
-  await expect(page.getByRole('list')).toContainText('If LLC, provide Article of Organization');
-  await expect(page.getByRole('list')).toContainText('If Corporation, provide Certificate of Incorporation');
-  await expect(page.getByRole('list')).toContainText('If Sole Proprietorship, provide one of the following: Business License, Permit or Brand Name Registration');
-  await expect(page.getByRole('list')).toContainText('If outside the US, provide the applicable business registration or formation document issued by the local government authority.');
-  await page.getByRole('heading', { name: 'Business Registration Document' }).getByRole('button').click();
-  await page.getByText('Beneficiary Details / Key').click();
-  await page.getByRole('textbox', { name: 'First name' }).click();
-  await page.getByRole('textbox', { name: 'First name' }).fill('First');
-  await page.getByRole('textbox', { name: 'Last name' }).click();
-  await page.getByRole('textbox', { name: 'Last name' }).fill('Name');
-  await page.getByRole('textbox', { name: 'Job title' }).click();
-  await page.getByRole('textbox', { name: 'Job title' }).fill('Job tiltle');
-  await page.getByRole('textbox', { name: 'Enter date of birth' }).click();
-  await page.getByRole('button', { name: '1' }).first().click();
-  await page.getByRole('textbox', { name: '%' }).click();
-  await page.getByRole('textbox', { name: '%' }).fill('30%');
-  await page.getByRole('button', { name: 'Select beneficiary citizenship' }).click();
-  await page.locator('a').filter({ hasText: 'United States of America' }).click();
-  await page.getByRole('button', { name: 'Select identification type' }).click();
-  await page.getByRole('button', { name: 'SSN' }).click();
-  await page.getByRole('textbox', { name: 'Enter SSN' }).click();
-  await page.getByRole('textbox', { name: 'Enter SSN' }).fill('555-98-74111');
-  await page.getByRole('textbox', { name: 'Enter email address' }).click();
-  await page.getByRole('textbox', { name: 'Enter email address' }).fill('email@example.com');
-  await page.getByRole('textbox', { name: 'Street address (no PO box)' }).click();
-  await page.getByRole('textbox', { name: 'Street address (no PO box)' }).fill('213 QUarry Road');
-  await page.getByRole('textbox', { name: 'Enter suite / office / floor' }).click();
-  await page.getByRole('textbox', { name: 'Enter suite / office / floor' }).fill('three');
-  await page.getByRole('textbox', { name: 'City' }).click();
-  await page.getByRole('textbox', { name: 'City' }).fill('City Road');
-  await page.getByRole('button', { name: 'Enter state' }).click();
-  await page.getByRole('button', { name: 'AZ' }).click();
-  await page.getByRole('textbox', { name: 'Zip code' }).click();
-  await page.getByRole('textbox', { name: 'Zip code' }).fill('25003');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.locator('.check-wrapper').click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.locator('.check-wrapper').click();
-  await expect(page.getByRole('heading')).toContainText('Key Person Details');
-  await page.getByRole('textbox', { name: 'Job title' }).click();
-  await page.getByRole('textbox', { name: 'Job title' }).fill('CEO');
-  await page.getByRole('textbox', { name: 'Enter date of birth' }).click();
-  await page.getByRole('button', { name: '1' }).first().click();
-  await page.getByRole('textbox', { name: 'Enter your mobile number' }).click();
-  await page.getByRole('textbox', { name: 'Enter your mobile number' }).fill('+1 (415) 987-6000');
-  await page.getByRole('button', { name: 'Select beneficiary citizenship' }).click();
-  await page.locator('a').filter({ hasText: 'United States of America' }).click();
-  await page.getByRole('button', { name: 'Select identification type' }).click();
-  await page.getByRole('button', { name: 'SSN' }).click();
-  await page.getByRole('textbox', { name: 'Enter SSN' }).click();
-  await page.getByRole('textbox', { name: 'Enter SSN' }).fill('555-97-88787');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('#root')).toContainText('Beneficiary Details / Key PersonPending');
-  await page.locator('div').filter({ hasText: /^Additional Information$/ }).first().click();
-  await page.getByRole('textbox', { name: 'Select date established' }).click();
-  await page.getByRole('button', { name: '1' }).nth(1).click();
-  await page.getByText('EIN').click();
-  await page.getByRole('textbox', { name: 'Enter business EIN' }).click();
-  await page.getByRole('textbox', { name: 'Enter business EIN' }).fill('321006548444');
-  await page.getByRole('button', { name: 'Select state of incorporation' }).click();
-  await page.getByRole('button', { name: 'Alabama' }).click();
-  await page.getByRole('button', { name: 'Select company type' }).click();
-  await page.getByRole('button', { name: 'Corporation', exact: true }).click();
-  await page.getByRole('button', { name: 'Select annual revenue' }).click();
-  await page.getByRole('button', { name: 'Pre-revenue' }).click();
-  await page.getByRole('button', { name: 'Select industry' }).click();
-  await page.getByRole('button', { name: 'Agriculture & Farming' }).click();
-  await page.getByRole('button', { name: 'Select sub industry' }).click();
-  await page.getByRole('button', { name: 'Agritech' }).click();
-  await page.getByRole('button', { name: 'Select location' }).click();
-  await page.getByRole('button', { name: 'Primarily U.S.-based' }).click();
-  await page.getByRole('button', { name: 'Select one' }).first().click();
-  await page.getByRole('button', { name: '-15' }).click();
-  await page.getByRole('button', { name: 'Select one' }).click();
-  await page.getByRole('button', { name: '$1M-$5M' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByText('Internal funds').click();
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).click();
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).fill('this is the description of the ');
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).press('ControlOrMeta+a');
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).press('ControlOrMeta+c');
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).press('ArrowRight');
-  await page.getByRole('textbox', { name: 'Please describe your company\'' }).fill('this is the description of the this is the description of the this is the description of the this is the description of the this is the description of the this is the description of the ');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.locator('#root')).toContainText('Additional InformationPending');
-  await page.locator('div').filter({ hasText: /^Agreements & Certifications$/ }).first().click();
-  await page.locator('.check-wrapper').first().click();
-  await page.locator('div:nth-child(2) > .check-box-white > .bivo-check-box > label > .check-wrapper').click();
-  await page.locator('div:nth-child(3) > .check-box-white > .bivo-check-box > label > .check-wrapper').click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.locator('.check-wrapper').click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('link', { name: 'Business Verification Business Verification' }).click();
-  await expect(page.locator('#root')).toContainText('Agreements & CertificationsPending');
+test.describe('Bu-web business onboarding', () => {
+  test('Complete business signup through verification submission', async ({ page, request }) => {
+    test.setTimeout(180000);
+    const testData = generateBuWebTestData();
+    console.log('business email:', testData.email);
+
+    const signInPage          = new BuWebSignInPage(page);
+    const verificationPage    = new VerificationPage(page);
+    const getStartedPage      = new BuWebGetStartedPage(page);
+    const businessAddressPage = new BuWebBusinessAddressPage(page);
+    const verificationHubPage = new BuWebBusinessVerificationPage(page);
+    const beneficialOwnerPage = new BuWebBeneficialOwnerPage(page);
+    const additionalInfoPage  = new BuWebAdditionalInfoPage(page);
+    const agreementsPage      = new BuWebAgreementsPage(page);
+
+    await test.step('Step 1 | Sign in with business email', async () => {
+      await signInPage.goto();
+      await signInPage.enterEmail(testData.email);
+    });
+
+    await test.step('Step 2 | Retrieve OTP and complete verification', async () => {
+      await verificationPage.digit1Input.waitFor({ state: 'visible' });
+      testData._otp = await getOtpForBusinessEmail(request, testData.email);
+      await verificationPage.verifyAndProceedAsNewUser(testData._otp);
+    });
+
+    await test.step('Step 3 | Get started form — create prospect', async () => {
+      await getStartedPage.fill(testData.getStarted);
+      testData._prospectsPromise = page.waitForResponse(
+        res => res.url().includes('/prospect/v1/business/prospects') && res.request().method() === 'POST'
+      );
+      await getStartedPage.clickContinue();
+      const prospectsRes = await testData._prospectsPromise;
+      expect(prospectsRes.status()).toBe(202);
+      testData.prospectId = await prospectsRes.text();
+      await expect(page.getByRole('heading')).toContainText('Business Address');
+      await expect(page.locator('#root')).toContainText('United States of America');
+    });
+
+    await test.step('Step 4 | Business address — create account', async () => {
+      await businessAddressPage.fill(testData.bizAddress);
+      testData._addressPromise = page.waitForResponse(
+        res => res.url().includes(`/prospect/v1/business/prospects/${testData.prospectId}/address`) && res.request().method() === 'PUT'
+      );
+      testData._accountPromise = page.waitForResponse(
+        res => res.url().includes(`/clientaccount/v1/business/account/${testData.prospectId}`) && res.request().method() === 'POST'
+      );
+      await businessAddressPage.clickContinue();
+      expect((await testData._addressPromise).status()).toBe(202);
+      expect((await testData._accountPromise).status()).toBe(200);
+      await expect(page.locator('#root')).toContainText(`Dear ${testData.getStarted.firstName} ${testData.getStarted.lastName},`);
+      await expect(page.locator('#root')).toContainText('Business Verification');
+    });
+
+    await test.step('Step 5 | Business Registration Document — review content', async () => {
+      await verificationHubPage.goto();
+      await verificationHubPage.openBusinessRegistrationDoc();
+      await expect(page.locator('#root')).toContainText('Please email the document to support@bivocash.com');
+      await expect(page.getByRole('list')).toContainText('If LLC, provide Article of Organization');
+      await expect(page.getByRole('list')).toContainText('If Corporation, provide Certificate of Incorporation');
+      await expect(page.getByRole('list')).toContainText('If Sole Proprietorship, provide one of the following: Business License, Permit or Brand Name Registration');
+      await expect(page.getByRole('list')).toContainText('If outside the US, provide the applicable business registration or formation document issued by the local government authority.');
+      await verificationHubPage.closeBusinessRegistrationDoc();
+    });
+
+    await test.step('Step 6 | Beneficial owner + owners list + Key Person Details', async () => {
+      await verificationHubPage.openBeneficialOwnerSection();
+      testData._ownerPostPromise = page.waitForResponse(
+        res => res.url().includes('/prospect/v1/business/prospects/owners') && res.request().method() === 'POST'
+      );
+      testData._ownerGetPromise = page.waitForResponse(
+        res => res.url().includes('/prospect/v1/business/prospects/owners') && res.request().method() === 'GET'
+      );
+      await beneficialOwnerPage.fillAndSubmitOwnerForm(testData.owner);
+      expect((await testData._ownerPostPromise).status()).toBe(202);
+      expect((await testData._ownerGetPromise).status()).toBe(200);
+      await beneficialOwnerPage.confirmNoOtherOwnersAndContinue();
+      await beneficialOwnerPage.confirmAsKeyPerson();
+      await expect(page.getByRole('heading')).toContainText('Key Person Details');
+      await beneficialOwnerPage.fillAndSubmitKeyPersonDetails(testData.keyPerson);
+      await expect(page.locator('#root')).toContainText('Beneficiary Details / Key PersonPending');
+    });
+
+    await test.step('Step 7 | Additional Information', async () => {
+      await verificationHubPage.openAdditionalInfoSection();
+      await additionalInfoPage.fillDateEstablished();
+      await additionalInfoPage.fillCompanyDetailsAndContinue(testData.additionalInfo);
+      testData._additionalInfoPromise = page.waitForResponse(
+        res => res.url().includes('/business/v1/business/account/verification/additional/info') && res.request().method() === 'POST'
+      );
+      await additionalInfoPage.fillFundingDescriptionAndContinue(testData.additionalInfo);
+      expect((await testData._additionalInfoPromise).status()).toBe(200);
+      await expect(page.locator('#root')).toContainText('Additional InformationPending');
+    });
+
+    await test.step('Step 8 | Agreements & Certifications', async () => {
+      await verificationHubPage.openAgreementsSection();
+      testData._agreementPromise = page.waitForResponse(
+        res => res.url().includes('/business/v1/business/account/verification/agreement/accepted') && res.request().method() === 'PUT'
+      );
+      await agreementsPage.acceptAgreementsAndContinue();
+      expect((await testData._agreementPromise).status()).toBe(200);
+      testData._docSubmittedPromise = page.waitForResponse(
+        res => res.url().includes('/business/v1/business/account/verification/document/submitted') && res.request().method() === 'PUT'
+      );
+      await agreementsPage.acceptFinalCertificationAndContinue();
+      expect((await testData._docSubmittedPromise).status()).toBe(200);
+      await verificationHubPage.goto();
+      await expect(page.locator('#root')).toContainText('Agreements & CertificationsPending');
+    });
+  });
 });

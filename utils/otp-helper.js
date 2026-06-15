@@ -165,8 +165,91 @@ async function getOtpForEmail(request, email) {
   }
 }
 
+/**
+ * Retrieves the OTP for a business user identified by email.
+ * Unlike getOtpForEmail, this explicitly triggers the OTP via the identity API
+ * with userType BUSINESS before reading it from Keycloak.
+ */
+async function getOtpForBusinessEmail(request, email) {
+  try {
+    const otpUrl = `${process.env.HOST}/identity/v1/otp`;
+    otpDebugLog('POST', otpUrl, '(business, email redacted)');
+
+    const otpResponse = await request.post(otpUrl, {
+      headers: {
+        'X-Tenant-Identifier': process.env.TENANT_IDENTIFIER,
+        'Content-Type': 'application/json',
+      },
+      data: { email, userType: 'BUSINESS' },
+    });
+
+    const otpResponseText = await otpResponse.text();
+    if (otpResponse.status() !== 200) {
+      throw new Error(`OTP trigger failed (${otpResponse.status()}): ${otpResponseText}`);
+    }
+    otpDebugLog('Business OTP trigger OK');
+
+    const authUrl = `${process.env.KEYCLOAK_HOST}/${process.env.KEYCLOAK_AUTH_URI}`;
+    const formData = new URLSearchParams({
+      client_id: process.env.KEYCLOAK_CLIENT_ID,
+      username: process.env.KEYCLOAK_USERNAME,
+      password: process.env.KEYCLOAK_PASSWORD,
+      grant_type: process.env.KEYCLOAK_GRANT_TYPE,
+    }).toString();
+
+    const authResponse = await request.post(authUrl, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: formData,
+      timeout: 30000,
+    });
+
+    const authResponseText = await authResponse.text();
+    if (authResponse.status() !== 200) {
+      throw new Error(`Keycloak authentication failed (${authResponse.status()}): ${authResponseText}`);
+    }
+
+    const bearerToken = JSON.parse(authResponseText).access_token;
+    otpDebugLog('Keycloak token OK (business email lookup)');
+
+    const userUrl = `${process.env.KEYCLOAK_HOST}/${process.env.KEYCLOAK_URI}/realms/${process.env.KEYCLOAK_REALM}/users`;
+
+    let userData = [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 3000));
+      const userResponse = await request.get(userUrl, {
+        headers: { Authorization: `Bearer ${bearerToken}` },
+        params: { email, exact: 'true' },
+        timeout: 30000,
+      });
+      const userResponseText = await userResponse.text();
+      if (userResponse.status() !== 200) {
+        throw new Error(`User retrieval failed (${userResponse.status()}): ${userResponseText}`);
+      }
+      userData = JSON.parse(userResponseText);
+      if (userData && userData.length > 0) break;
+      otpDebugLog(`Business user not found yet (attempt ${attempt + 1}/5), retrying...`);
+    }
+
+    if (!userData || userData.length === 0) {
+      throw new Error(`No Keycloak user found for business email: ${email}`);
+    }
+
+    const user = userData[0];
+    if (!user.attributes?.otp?.[0]) {
+      throw new Error('OTP attribute not found on Keycloak user');
+    }
+
+    otpDebugLog('Business OTP retrieved (value not logged)');
+    return decodeOtp(user.attributes.otp[0]);
+  } catch (error) {
+    console.error('[otp-helper] getOtpForBusinessEmail failed:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
   getOtpForPhoneNumber,
   getOtpForEmail,
+  getOtpForBusinessEmail,
   decodeOtp,
 };
