@@ -524,8 +524,95 @@ function generateBankingDetailsForBusiness(countryCode) {
   return generateBankingDetails(countryCode);
 }
 
+const BU_WEB_HEAR_ABOUT_OPTIONS = [
+  'Friend / Colleagues', 'Online search', 'Google Ads', 'LinkedIn',
+  'Facebook', 'Twitter', 'YouTube', 'Instagram', 'Direct email', 'Other',
+];
+
+function generateBusinessSSN() {
+  return `555-${generateRandomDigits(2)}-${generateRandomDigits(5)}`;
+}
+
+function generateBuWebDescription() {
+  let d = faker.lorem.words(35);
+  while (d.length < 192) d += ` ${faker.lorem.word()}`;
+  return d;
+}
+
+/**
+ * Generates complete test data for bu-web business onboarding.
+ * Data is grouped into nested objects that map 1-to-1 onto page object method signatures.
+ * All possible fields are randomised; fixed values are dropdowns with limited options.
+ * @returns {object}
+ */
+function generateBuWebTestData() {
+  const firstName = faker.person.firstName().replace(/[^a-zA-Z]/g, '');
+  const lastName  = faker.person.lastName().replace(/[^a-zA-Z]/g, '');
+
+  return {
+    email: `automation.biz.${firstName.toLowerCase()}.${generateRandomDigits(4)}@example.com`,
+
+    getStarted: {
+      firstName,
+      lastName,
+      company:     faker.company.name().replace(/['"]/g, '').trim(),
+      hearAbout:   faker.helpers.arrayElement(BU_WEB_HEAR_ABOUT_OPTIONS),
+      website:     faker.internet.domainName(),
+      socialMedia: `@${faker.internet.username().toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+    },
+
+    bizAddress: {
+      street: faker.location.streetAddress(),
+      suite:  `Suite ${faker.number.int({ min: 1, max: 999 })}`,
+      city:   faker.location.city(),
+      state:  'AK',
+      zip:    faker.location.zipCode('#####'),
+    },
+
+    owner: {
+      firstName:    faker.person.firstName().replace(/[^a-zA-Z]/g, ''),
+      lastName:     faker.person.lastName().replace(/[^a-zA-Z]/g, ''),
+      jobTitle:     faker.person.jobTitle(),
+      ownershipPct: '30%',
+      citizenship:  'United States of America',
+      idType:       'SSN',
+      ssn:          generateBusinessSSN(),
+      email:        `automation.owner.${generateRandomDigits(4)}@example.com`,
+      street:       faker.location.streetAddress(),
+      suite:        `Apt ${faker.number.int({ min: 1, max: 99 })}`,
+      city:         faker.location.city(),
+      state:        'AZ',
+      zip:          faker.location.zipCode('#####'),
+    },
+
+    keyPerson: {
+      jobTitle:    faker.person.jobTitle(),
+      phone:       '+1 (415) 987-6000',
+      citizenship: 'United States of America',
+      idType:      'SSN',
+      ssn:         generateBusinessSSN(),
+    },
+
+    // Dropdowns are fixed to known-valid options; randomised fields are ein and description
+    additionalInfo: {
+      ein:                  generateRandomDigits(12),
+      stateOfIncorporation: 'Alabama',
+      companyType:          'Corporation',
+      annualRevenue:        'Pre-revenue',
+      industry:             'Agriculture & Farming',
+      subIndustry:          'Agritech',
+      location:             'Primarily U.S.-based',
+      employeeRange:        '-15',
+      fundingSize:          '$1M-$5M',
+      fundingSource:        'Internal funds',
+      description:          generateBuWebDescription(),
+    },
+  };
+}
+
 module.exports = {
   generateUserTestData,
+  generateBuWebTestData,
   generateIncomingWireData,
   generateWireInstructionData,
   generateWithdrawFundData,
@@ -539,4 +626,5 @@ module.exports = {
   generateRandomDigits,
   generateRandomSSN,
   generateUniqueSignupPhoneNumber,
+  generateSwiftCode,
 };
