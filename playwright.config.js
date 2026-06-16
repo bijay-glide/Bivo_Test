@@ -19,8 +19,13 @@ const userWebOnboardingFiles = ['ui/user-web/onboarding.spec.js'];
 
 const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
 
-/** Multi-country FX suite — each test logs in independently. */
-const userWebFxMultiCountryFile = 'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js';
+/** Multi-country FX suite — individual (1.8) and business (1.8b) run together. */
+const userWebFxMultiCountryFiles = [
+  'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js',
+  'ui/user-web/1.8b ui_userweb_fx_multicountry_business.spec.js',
+];
+
+const buWebOnboardingFiles = ['ui/bu-web/1.1 ui_buweb_signup.spec.js'];
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -80,9 +85,11 @@ module.exports = defineConfig({
     {
       name: 'UI user-web parallel',
       testMatch: [
+        'ui/user-web/1.4*',
         'ui/user-web/1.6*',
         'ui/user-web/1.9*',
         'ui/user-web/1.10*',
+        'ui/user-web/1.11*',
       ],
       fullyParallel: true,
       dependencies: ['UI user-web onboarding'],
@@ -97,9 +104,21 @@ module.exports = defineConfig({
     },
     {
       name: 'UI user-web FX multi-country',
-      testMatch: userWebFxMultiCountryFile,
+      testMatch: userWebFxMultiCountryFiles,
       fullyParallel: true,
       dependencies: ['UI user-web onboarding'],
+      use: { ...uiServerUse }
+    },
+    {
+      name: 'UI bu-web onboarding',
+      testMatch: buWebOnboardingFiles,
+      fullyParallel: false,
+      use: { ...uiServerUse }
+    },
+    {
+      name: 'UI user-web exploratory',
+      testMatch: 'ui/user-web/exploratory.spec.js',
+      fullyParallel: true,
       use: { ...uiServerUse }
     }
   ]

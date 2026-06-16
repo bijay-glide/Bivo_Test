@@ -256,6 +256,14 @@ function generatePayeeExtraFields(countryCode) {
         streetAddress: faker.location.streetAddress(),
         city: faker.location.city(),
       };
+
+    case 'NZ':
+      return {
+        streetAddress: faker.location.streetAddress(),
+        city: faker.location.city(),
+        zipCode: faker.string.numeric(4),  // NZ 4-digit postal code
+      };
+
     case 'CN':
       return {
         streetAddress: faker.location.streetAddress(),
@@ -278,6 +286,50 @@ function generatePayeeExtraFields(countryCode) {
       };
     default:
       return null;
+  }
+}
+
+/**
+ * Generates extra payee fields for the BUSINESS payee form.
+ *
+ * The business form always has "Business Name" (handled separately) and may also
+ * show Street Address, City, and Zip/Postal Code depending on the country.
+ * Fields not present on the form are silently skipped by addBusinessPayee().
+ *
+ * @param {string} countryCode
+ * @returns {{ streetAddress: string, city: string, zipCode: string }}
+ */
+function generateBusinessPayeeExtraFields(countryCode) {
+  // GB confirmed from screenshot; assume all countries follow the same address pattern.
+  // addBusinessPayee() uses isVisible() checks so extra fields are skipped when absent.
+  const base = {
+    streetAddress: faker.location.streetAddress(),
+    city: faker.location.city(),
+  };
+
+  switch (countryCode) {
+    case 'IN':
+      return {
+        ...base,
+        zipCode: faker.string.numeric(6),
+        // Same full-international format as individual IN — "+91 9XXXX XXXXX" works in addPayee,
+        // so reuse the identical pattern in addBusinessPayee via pressSequentially
+        phone: `+91 9${faker.string.numeric(4)} ${faker.string.numeric(5)}`,
+      };
+    case 'JP':
+      return {
+        ...base,
+        zipCode: faker.string.numeric(7),
+        // Same full-international format as individual JP
+        phone: `+81 90 ${faker.string.numeric(4)} ${faker.string.numeric(4)}`,
+      };
+    case 'CN':
+      return { ...base, zipCode: faker.string.numeric(6) };
+    case 'NZ':
+      return { ...base, zipCode: faker.string.numeric(4) };
+    default:
+      // GB, AU, HK, MX — provide zip; page object skips fields not shown on the form
+      return { ...base, zipCode: faker.string.numeric(5) };
   }
 }
 
@@ -438,9 +490,38 @@ function generateBankingDetails(countryCode) {
         bankName:       generateBivoBankName(),
       };
 
+    case 'NZ':
+      return {
+        accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
+        bankName:      generateBivoBankName(),
+        swiftCode:     generateSwiftCode(8),
+      };
+
     default:
       throw new Error(`generateBankingDetails: no config for country "${countryCode}"`);
   }
+}
+
+/**
+ * Returns banking details for the BUSINESS payee flow.
+ *
+ * For most countries the business banking form matches the individual form
+ * and this delegates to generateBankingDetails(). For CN, the individual flow
+ * uses Alipay but the business form shows a standard bank-deposit screen
+ * (account number + SWIFT + bank name), so it returns the NZ-style shape.
+ *
+ * @param {string} countryCode
+ * @returns {object}
+ */
+function generateBankingDetailsForBusiness(countryCode) {
+  if (countryCode === 'CN') {
+    return {
+      accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),
+      swiftCode:     generateSwiftCode(8),
+      bankName:      generateBivoBankName(),
+    };
+  }
+  return generateBankingDetails(countryCode);
 }
 
 module.exports = {
@@ -453,6 +534,8 @@ module.exports = {
   generateFxTransactionData,
   generateBankingDetails,
   generatePayeeExtraFields,
+  generateBusinessPayeeExtraFields,
+  generateBankingDetailsForBusiness,
   generateRandomDigits,
   generateRandomSSN,
   generateUniqueSignupPhoneNumber,

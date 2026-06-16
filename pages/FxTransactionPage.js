@@ -133,6 +133,23 @@ class FxTransactionPage {
     await channelsResponsePromise;
   }
 
+  /** Business-tab variant — waits for beneficiary_type=BUSINESS channels response, then
+   *  networkidle so the rate + channels APIs are fully settled before amount entry. */
+  async selectBusinessDestinationCountryByTestId(countryCode) {
+    const channelsResponsePromise = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/remittance/v1/guest/beneficiary/channels/') &&
+        r.url().includes('beneficiary_type=BUSINESS') &&
+        r.request().method() === 'GET',
+      { timeout: 15000 },
+    ).catch(() => {});
+    await this.countrySelect(countryCode).click();
+    await channelsResponsePromise;
+    // Business tab fires additional API calls (rates, channels) that can re-render the
+    // amount input mid-type. networkidle ensures all settle before pressSequentially runs.
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  }
+
   /**
    * Clicks the $ amount field to focus it.
    * The default amount ($55.00) is pre-filled by the app — no fill needed.
@@ -143,13 +160,44 @@ class FxTransactionPage {
     await this.sendAmountInput.pressSequentially(amount + '00', { delay: 50 });
   }
 
-  // Same pattern as WirePaymentPage / US ACH: click, select all, pressSequentially. data.amountInput = cent digits (toCentsInput).
+  // Click, select-all, keyboard.type — robust against React re-renders that can
+  // truncate pressSequentially mid-type when exchange-rate APIs respond slowly.
   async enterSendAmountWithData(data) {
     await expect(this.sendAmountInput).toBeVisible({ timeout: 20000 });
     await expect(this.sendAmountInput).toBeEditable();
     await this.sendAmountInput.click();
     await this.sendAmountInput.selectText();
-    await this.sendAmountInput.pressSequentially(data.amountInput, { delay: 50 });
+    await this.page.keyboard.type(data.amountInput);
+  }
+
+  /**
+   * Amount entry for the Business FX flow. Uses page.keyboard.type() which
+   * dispatches keystrokes at the page level rather than on a specific locator,
+   * surviving React element replacements that can happen mid-type when the
+   * Business tab triggers exchange-rate re-renders (most visible for high-rate
+   * currencies like INR and JPY). Retries up to maxAttempts times.
+   *
+   * @param {{ amountInput: string }} data
+   * @param {number} [maxAttempts=3]
+   */
+  async enterSendAmountForBusiness(data, maxAttempts = 3) {
+    await expect(this.sendAmountInput).toBeVisible({ timeout: 20000 });
+    await expect(this.sendAmountInput).toBeEditable();
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.sendAmountInput.click();
+      await this.sendAmountInput.selectText();
+      // keyboard.type dispatches at page level — survives React element replacement
+      await this.page.keyboard.type(data.amountInput);
+      // Allow React to process all onChange events
+      await this.page.waitForTimeout(400);
+      const continueEnabled = await this.page
+        .getByRole('button', { name: 'Continue' })
+        .isEnabled({ timeout: 2000 })
+        .catch(() => false);
+      if (continueEnabled) return;
+      if (attempt < maxAttempts) await this.page.waitForTimeout(600);
+    }
   }
 
   // amountUsd e.g. "62.30"; encodes to cents like US ACH flow.
@@ -193,6 +241,46 @@ class FxTransactionPage {
    * @param {string} lastName
    * @param {object|null} extraFields  — { streetAddress?, city? } from fxData.payeeExtraFields
    */
+  /**
+   * Fills the business payee form (Account Details screen).
+   * Labels on this form are div/span elements, not <label>, so CSS placeholder
+   * selectors are used instead of getByRole to reliably match the inputs.
+   *
+   * @param {string} businessName  - Company / business name
+   * @param {object|null} extraFields  - Optional { streetAddress, city, zipCode, phone }
+   */
+  async addBusinessPayee(businessName, extraFields = null) {
+    await this.page.getByRole('button', { name: 'Add Payee' }).click();
+    await this.page.getByRole('heading', { name: 'Account Details' }).waitFor({ state: 'visible', timeout: 15000 });
+
+    await this.page.locator('input[placeholder="Enter business name"]').fill(businessName);
+
+    if (extraFields?.streetAddress) {
+      const el = this.page.locator('input[placeholder="Enter street address"]');
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) await el.fill(extraFields.streetAddress);
+    }
+    if (extraFields?.city) {
+      const el = this.page.locator('input[placeholder="Enter beneficiary\'s city"]');
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) await el.fill(extraFields.city);
+    }
+    if (extraFields?.zipCode) {
+      const el = this.page.locator('input[placeholder="Enter zip/postal code"]');
+      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) await el.fill(extraFields.zipCode);
+    }
+    if (extraFields?.phone) {
+      // Use the same full-international format + pressSequentially approach as
+      // addPayee() (individual flow), which is confirmed working for IN and JP.
+      const phoneInput = this.page.getByRole('textbox', { name: /Enter your (mobile|phone) number/i });
+      if (await phoneInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await phoneInput.click();
+        await phoneInput.selectText();
+        await phoneInput.pressSequentially(extraFields.phone, { delay: 50 });
+      }
+    }
+
+    await this.continue();
+  }
+
   async addPayee(firstName, lastName, extraFields = null) {
     await this.page.getByRole('button', { name: 'Add Payee' }).click();
     await this.page.getByRole('textbox', { name: "Enter beneficiary's first name" }).fill(firstName);
@@ -353,6 +441,22 @@ class FxTransactionPage {
   }
 
   /**
+   * Fills the NZ Bank Deposit form (New Zealand).
+   * Fields: account number, bank name, optional SWIFT code.
+   */
+  async enterNzBankDetails({ accountNumber, bankName, swiftCode }) {
+    await this.page.getByRole('textbox', { name: 'Enter account number' }).fill(accountNumber);
+    await this.page.getByRole('textbox', { name: 'Enter bank name' }).fill(bankName);
+    if (swiftCode) {
+      const swiftInput = this.page.getByRole('textbox', { name: 'Enter SWIFT code' });
+      if (await swiftInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await swiftInput.fill(swiftCode);
+      }
+    }
+    await this.continue();
+  }
+
+  /**
    * Channel dispatcher — routes to the correct banking-details method based on
    * the country config's `channel` value.  Add new `else if` blocks here as
    * more country recordings come in (e.g. 'bank' for CA/IN).
@@ -376,6 +480,8 @@ class FxTransactionPage {
       await this.enterAlipayDetails(bankingDetails);
     } else if (channel === 'bcr_pay') {
       await this.enterBcrPayDetails(bankingDetails);
+    } else if (channel === 'nz_bank') {
+      await this.enterNzBankDetails(bankingDetails);
     } else {
       throw new Error(`enterBankingDetailsByChannel: unsupported channel "${channel}"`);
     }
