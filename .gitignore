@@ -40,6 +40,9 @@ videos/
 # Shared onboarding state — survives between Playwright runs (outside test-results/)
 .bivo-state/
 
+# API capture artifacts (written when CAPTURE_APIS=1)
+api-capture/
+
 # Claude Code
 .claude/
 CLAUDE.md
@@ -47,3 +50,6 @@ CLAUDE.md
 # Local Playwright CLI binary and legacy API test package (not part of this repo)
 playwright
 playwright-bivo-api-tests@1.0.0
+
+#plane scripts to import automation tickets
+plane
