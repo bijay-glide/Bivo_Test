@@ -336,7 +336,9 @@ test.describe('Currency Rate APIs - Negative Tests', () => {
     const responseBody = await getResponseBody(response);
     await attachRequestResponse('GET', ENDPOINTS.PAYMENT.GET_CURRENCY_RATE.path, null, response, responseBody);
 
-    expect([500]).toContain(response.status());
+    expect(response.status()).toBe(400);
+    expect(responseBody.errorCode).toBe('102300012');
+    expect(responseBody.userMessage).toBe('Currency details not found.');
   });
 
   test('TC115 - Get Currency Rate with invalid amount should fail', {
