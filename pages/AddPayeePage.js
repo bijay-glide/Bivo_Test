@@ -14,6 +14,13 @@ class AddPayeePage {
     await this.page.waitForLoadState('networkidle', { timeout: 30000 });
   }
 
+  // Bu-web sidebar uses a text "Payees" link (testid sidebar-menuitem-money-transfer-payee)
+  // rather than the user-web "Sidebar-nav-payees" testid.
+  async navigateToPayeesBuWeb() {
+    await this.page.getByRole('link', { name: 'Payees' }).first().click();
+    await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+  }
+
   async clickAddPayee() {
     const btn = this.page.getByRole('button', { name: 'Add Payee' });
     await expect(btn).toBeVisible({ timeout: 30000 });
@@ -54,16 +61,27 @@ class AddPayeePage {
     await this.page.getByRole('textbox', { name: "Enter beneficiary's first name" }).fill(firstName);
     await this.page.getByRole('textbox', { name: "Enter beneficiary's last name" }).fill(lastName);
 
+    // Optional address fields are filled only when the form actually renders them.
+    // The personal-info form varies by surface/country (e.g. bu-web CN shows names
+    // only), so guard each field with a visibility check to avoid hanging on absent
+    // inputs — same pattern as addBusinessPayee() in FxTransactionPage.
+    const fillIfVisible = async (name, value) => {
+      const field = this.page.getByRole('textbox', { name });
+      if (await field.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await field.fill(value);
+      }
+    };
+
     if (extraFields?.streetAddress) {
-      await this.page.getByRole('textbox', { name: 'Enter street address' }).fill(extraFields.streetAddress);
+      await fillIfVisible('Enter street address', extraFields.streetAddress);
     }
     if (extraFields?.city) {
-      await this.page.getByRole('textbox', { name: "Enter beneficiary's city" }).fill(extraFields.city);
+      await fillIfVisible("Enter beneficiary's city", extraFields.city);
     }
     if (extraFields?.zipCode) {
-      await this.page.getByRole('textbox', { name: 'Enter zip/postal code' }).fill(extraFields.zipCode);
+      await fillIfVisible('Enter zip/postal code', extraFields.zipCode);
     }
-    if (extraFields?.phone) {
+    if (extraFields?.phone && await this.page.getByRole('textbox', { name: /Enter your (mobile|phone) number/i }).isVisible({ timeout: 3000 }).catch(() => false)) {
       // Label varies by country — IN: "mobile number", JP: "phone number"
       const phoneInput = this.page.getByRole('textbox', { name: /Enter your (mobile|phone) number/i });
       await phoneInput.click();
@@ -145,10 +163,13 @@ class AddPayeePage {
    * captures POST /remittance/v1/beneficiary/account.
    * Returns { acctResponse, requestBody, responseBody }.
    */
-  async fillBankingDetailsByChannelAndCaptureApi(channel, bankingDetails) {
+  async fillBankingDetailsByChannelAndCaptureApi(channel, bankingDetails, options = {}) {
+    // Bu-web posts the beneficiary account to /business/v1/beneficiary/account;
+    // user-web uses /remittance/v1/beneficiary/account. Both end in /beneficiary/account.
+    const accountUrlFragment = options.accountUrlFragment || '/beneficiary/account';
     const accountPromise = this.page.waitForResponse(
       (r) =>
-        r.url().includes('/remittance/v1/beneficiary/account') &&
+        r.url().includes(accountUrlFragment) &&
         r.request().method() === 'POST' &&
         r.ok(),
       { timeout: 30000 },

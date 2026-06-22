@@ -247,13 +247,13 @@ class WirePaymentPage {
    * @param {string} firstName
    * @param {string} amount  - e.g. '$90.00'
    */
-  async verifyTransactionHistory(firstName, amount) {
+  async verifyTransactionHistory(firstName, amount, { transactionType = 'Debit' } = {}) {
     await this.page.getByRole('link', { name: 'View Transactions' }).click();
 
     await expect(this.page.locator('tbody')).toContainText(`- ${amount}`);
     await expect(this.page.locator('tbody')).toContainText(`Withdraw fund to ${firstName}`);
     await expect(this.page.locator('tbody')).toContainText('PENDING');
-    await expect(this.page.locator('tbody')).toContainText('Debit');
+    await expect(this.page.locator('tbody')).toContainText(transactionType);
   }
 
   /**

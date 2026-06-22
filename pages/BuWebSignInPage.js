@@ -5,6 +5,7 @@ class BuWebSignInPage {
     this.page = page;
     this.emailInput = page.getByRole('textbox', { name: 'Enter your email' });
     this.nextButton = page.getByRole('button', { name: 'Next' });
+    this.loginButton = page.getByRole('button', { name: 'Login' });
   }
 
   async goto() {
@@ -14,6 +15,13 @@ class BuWebSignInPage {
   async enterEmail(email) {
     await this.emailInput.fill(email);
     await this.nextButton.click();
+  }
+
+  // Returning-user: fill existing password and advance to TOTP screen.
+  async loginWithPassword(password) {
+    await this.page.locator('input[type="password"]').waitFor({ state: 'visible', timeout: 15000 });
+    await this.page.locator('input[type="password"]').fill(password);
+    await this.loginButton.click();
   }
 }
 

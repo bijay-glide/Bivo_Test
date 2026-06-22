@@ -122,6 +122,128 @@ class UsAchPaymentPage {
     //await expect(this.page.locator('#root')).toContainText(`Requested date${expectedToday}`);
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Shared bu-web / individual-user US payment flow (data-testid based).
+  // Both surfaces render the same add-payee → account → send-method → execution
+  // → review → transfer screens, so these methods work on either. API checkpoints
+  // captured from USPAyment-UserDetails / -AccountDetails / -transferAPI HARs.
+  // ────────────────────────────────────────────────────────────────────────
+
+  /** Payments → Money Transfer (internal payee) → Add Payee. */
+  async navigateToAddPayeeInternal() {
+    await this.page.getByTestId('sidebar-menuitem-payments').click();
+    const payeeInternal = this.page.getByTestId('sidebar-menuitem-money-transfer-payee-internal');
+    await payeeInternal.waitFor({ state: 'visible', timeout: 10000 });
+    await payeeInternal.click();
+    await this.page.getByRole('button', { name: 'Add Payee' }).click();
+  }
+
+  /** Fills payee personal details and captures POST /remittance/v1/beneficiary/personal-info (202 → referenceId). */
+  async addPayeeDetailsAndCaptureApi({ firstName, lastName, addressOne, city, state, postalCode }) {
+    const personalInfoPromise = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/remittance/v1/beneficiary/personal-info') &&
+        r.request().method() === 'POST' &&
+        r.ok(),
+      { timeout: 30000 },
+    );
+
+    await this.page.getByTestId('addpayeedetails-first-name-input').fill(firstName);
+    await this.page.getByTestId('addpayeedetails-last-name-input').fill(lastName);
+    await this.page.getByTestId('addpayeedetails-address-one-input').fill(addressOne);
+    await this.page.getByTestId('addpayeedetails-city-input').fill(city);
+    await this.page.getByTestId('addpayeedetails-state-input').fill(state);
+    await this.page.getByTestId('addpayeedetails-postal-code-input').fill(postalCode);
+    await this.page.getByRole('button', { name: 'Continue' }).click();
+
+    const response = await personalInfoPromise;
+    const body = await response.json().catch(() => ({}));
+    return { referenceId: body.referenceId, response };
+  }
+
+  /** Fills bank account + routing and captures POST /business/v1/beneficiary/account (202 → state, accountNumber). */
+  async addBankAccountAndCaptureApi({ bankAccountNumber, routingCode }) {
+    const accountPromise = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/business/v1/beneficiary/account') &&
+        r.request().method() === 'POST' &&
+        r.ok(),
+      { timeout: 30000 },
+    );
+
+    await this.page.getByTestId('addpayeeaddress-bank-account-number-input').fill(bankAccountNumber);
+    await this.page.getByTestId('addpayeeaddress-routing-code-input').fill(routingCode);
+    await this.page.getByRole('button', { name: 'Continue' }).click();
+
+    const response = await accountPromise;
+    const body = await response.json().catch(() => ({}));
+    // accountNumber here is the internal beneficiary account — it becomes transfer-fund's toAccount.
+    return { state: body.state, beneficiaryAccountNumber: body.accountNumber, response };
+  }
+
+  /** Selects WIRE or ACH send method and continues. */
+  async selectSendMethodAndContinue(channelType) {
+    const testId =
+      channelType === 'ACH' ? 'otherinternalsend-ach-radio' : 'otherinternalsend-wire-radio';
+    await this.page.getByTestId(testId).check();
+    await this.page.getByRole('button', { name: 'Continue' }).click();
+  }
+
+  /** Enters amount (cent-string), instruction, frequency=once, executes now, continues to review. */
+  async fillExecutionDetailsAndContinue({ amountInputValue, instruction }) {
+    const amount = this.page.getByTestId('otherinternalexecution-amount-input');
+    await amount.click();
+    await amount.pressSequentially(amountInputValue, { delay: 50 });
+
+    await this.page.getByTestId('otherinternalexecution-instruction-input').fill(instruction);
+    await this.page.getByTestId('dropdown_frequency').click();
+    await this.page.getByTestId('dropdown_option_once').click();
+    await this.page.getByTestId('button_now').click();
+    await this.page.getByRole('button', { name: 'Continue' }).click();
+  }
+
+  /** Review screen assertions for the shared bu-web/individual flow. */
+  async verifyUsPaymentReview({
+    firstName,
+    lastName,
+    bankAccountNumber,
+    routingNumber,
+    amountDisplay,
+    paymentVia,
+    expectedToday,
+  }) {
+    const root = this.page.locator('#root');
+    await expect(root).toContainText(`${firstName} ${lastName}`);
+    await expect(root).toContainText(`Account number${bankAccountNumber}`);
+    await expect(root).toContainText(`Routing number${routingNumber}`);
+    await expect(root).toContainText(`Amount${amountDisplay}`);
+    await expect(root).toContainText(`Payment via${paymentVia}`);
+    if (expectedToday) await expect(root).toContainText(`Requested date${expectedToday}`);
+  }
+
+  /** Clicks Transfer and captures POST /business/v1/transaction/transfer-fund (200 → identifier, status). */
+  async submitBusinessTransferAndCaptureApi() {
+    const transferPromise = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/business/v1/transaction/transfer-fund') &&
+        r.request().method() === 'POST' &&
+        r.ok(),
+      { timeout: 30000 },
+    );
+
+    await this.page.getByRole('button', { name: 'Transfer' }).click();
+
+    const response = await transferPromise;
+    let request = {};
+    try {
+      request = response.request().postDataJSON() || {};
+    } catch {
+      request = {};
+    }
+    const body = await response.json().catch(() => ({}));
+    return { request, identifier: body.identifier, status: body.status, response };
+  }
+
   async submitTransferAndCaptureTransferFundApi() {
     const transferFundPromise = this.page.waitForResponse(
       (response) =>
@@ -211,18 +333,14 @@ class UsAchPaymentPage {
   }
 
   /**
-   * GET transactions list after ACH transfer: locate row by correlationId and assert API fields.
-   * Retries up to 3 times (4 s apart) if the transaction isn't visible yet — ACH processing lag.
+   * Opens the transactions list and locates the row whose correlationId matches the
+   * transfer identifier. Retries (UI reload) then falls back to scanning the paginated
+   * transactions API directly, since a freshly-created row can lag and/or land beyond
+   * page 0 when the account already has many transactions.
+   *
+   * @returns {Promise<{ transactions: object[], tx: object|null }>}
    */
-  async assertTransactionsApiAchDebitRow({
-    accountNumber,
-    correlationId,
-    bivoAccountNumber,
-    amountUsd,
-    payeeFirstName,
-    payeeLastName,
-    transferFundRequest,
-  }) {
+  async locateTransactionByCorrelationId({ accountNumber, correlationId }) {
     const { transactions: initialTransactions } = await this.openTransactionsAndCaptureApi({ accountNumber });
 
     let transactions = initialTransactions;
@@ -246,7 +364,7 @@ class UsAchPaymentPage {
 
     // Paginated fallback: the UI reload fetches only the first page of results.
     // If the API defaults to oldest-first sort and the account has many transactions,
-    // the new ACH row lands beyond page 0. Scan pages 0-9 per attempt to cover
+    // the new row lands beyond page 0. Scan pages 0-9 per attempt to cover
     // accounts where hundreds of prior transactions have accumulated.
     if (correlationId && !this.findTransactionByCorrelationId(transactions, correlationId)) {
       const token = await this.page.evaluate(() => {
@@ -279,12 +397,28 @@ class UsAchPaymentPage {
       }
     }
 
+    return { transactions, tx: this.findTransactionByCorrelationId(transactions, correlationId) };
+  }
+
+  /**
+   * GET transactions list after ACH transfer: locate row by correlationId and assert API fields.
+   * Retries up to 3 times (4 s apart) if the transaction isn't visible yet — ACH processing lag.
+   */
+  async assertTransactionsApiAchDebitRow({
+    accountNumber,
+    correlationId,
+    bivoAccountNumber,
+    amountUsd,
+    payeeFirstName,
+    payeeLastName,
+    transferFundRequest,
+  }) {
+    const { transactions, tx } = await this.locateTransactionByCorrelationId({ accountNumber, correlationId });
+
     expect(
       transactions.length,
       'transactions API should return at least one transaction row',
     ).toBeGreaterThan(0);
-
-    const tx = this.findTransactionByCorrelationId(transactions, correlationId);
     expect(
       tx,
       `transactions API should include a row with correlationId ${correlationId}`,
@@ -303,6 +437,41 @@ class UsAchPaymentPage {
     if (transferFundRequest?.toAccount != null) {
       expect(String(tx.reference)).toBe(String(transferFundRequest.toAccount));
     }
+
+    return { transactions, tx };
+  }
+
+  /**
+   * Bu-web / business transfer-fund verification: open the transactions list and confirm
+   * the API row whose correlationId equals the transfer identifier. Asserts only the fields
+   * proven by the transfer-fund request/response — account, amount, and status — so it holds
+   * for both WIRE and ACH without depending on user-web-specific copy.
+   *
+   * @param {string} expectedStatus  WIRE settles as PENDING; ACH settles as CONFIRMED.
+   * @returns {Promise<{ transactions: object[], tx: object }>}
+   */
+  async assertBusinessTransferInTransactionsApi({ accountNumber, correlationId, amountUsd, expectedStatus }) {
+    const { transactions, tx } = await this.locateTransactionByCorrelationId({ accountNumber, correlationId });
+
+    expect(
+      transactions.length,
+      'transactions API should return at least one transaction row',
+    ).toBeGreaterThan(0);
+    expect(
+      tx,
+      `transactions API should include a row with correlationId ${correlationId}`,
+    ).toBeTruthy();
+
+    expect(String(tx.account), 'transaction account should match the Bivo account').toBe(String(accountNumber));
+    expect(Number(tx.amount), 'transaction amount should match the transfer').toBe(Number(amountUsd));
+
+    // Status is channel-specific: WIRE lands as PENDING, ACH lands as CONFIRMED.
+    const status = tx.status ?? tx.transactionStatus;
+    expect(status, 'transactions row should expose a status').toBeTruthy();
+    expect(
+      String(status).toUpperCase(),
+      `newly created transfer should be ${expectedStatus}`,
+    ).toBe(String(expectedStatus).toUpperCase());
 
     return { transactions, tx };
   }
