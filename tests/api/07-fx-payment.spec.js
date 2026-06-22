@@ -120,7 +120,9 @@ test.describe('Create FX Transfer API - Negative Tests', () => {
     const responseBody = await getResponseBody(response);
     await attachRequestResponse('POST', ENDPOINTS.PAYMENT.CREATE.path, secondPayment, response, responseBody);
 
-    expect(response.status()).toBe(500);
+    expect(response.status()).toBe(400);
+    expect(responseBody.errorCode).toBe('102200018');
+    expect(responseBody.userMessage).toBe('Transaction with correlation id already exists.');
   });
 
   test('TC305 - Create FX transfer with invalid amount should fail', {
@@ -143,7 +145,9 @@ test.describe('Create FX Transfer API - Negative Tests', () => {
     const responseBody = await getResponseBody(response);
     await attachRequestResponse('POST', ENDPOINTS.PAYMENT.CREATE.path, body, response, responseBody);
 
-    expect(response.status()).toBe(500);
+    expect(response.status()).toBe(400);
+    expect(responseBody.errorCode).toBe('102300029');
+    expect(responseBody.userMessage).toBe('Payment amount cannot be negative.');
   });
 
   test('TC306 - Create FX transfer with invalid beneficiary account should fail', {
@@ -166,7 +170,9 @@ test.describe('Create FX Transfer API - Negative Tests', () => {
     const responseBody = await getResponseBody(response);
     await attachRequestResponse('POST', ENDPOINTS.PAYMENT.CREATE.path, body, response, responseBody);
 
-    expect(response.status()).toBe(500);
+    expect(response.status()).toBe(400);
+    expect(responseBody.errorCode).toBe('102300001');
+    expect(responseBody.userMessage).toBe('Beneficiary account not found.');
   });
 
 });
@@ -244,7 +250,28 @@ test.describe('Get Payment Status API - Positive Tests', () => {
   }, async ({ request }) => {
     test.info().annotations.push({ type: 'severity', description: 'critical' });
 
-    const paymentIdentifier = 'MQYy7LFc';
+    // Create a payment first so the status lookup is self-sufficient, instead of
+    // relying on a hardcoded identifier that drifts out of the sandbox over time.
+    const createBody = {
+      clientId: 20505,
+      businessId: null,
+      fromAccount: '10000000026554',
+      beneficiaryAccount: '5000000007090',
+      amount: 10,
+      toCurrencyId: 15,
+      amountCurrencyId: null,
+      description: 'Automation Test - Playwright : Payment status lookup',
+      correlationId: `corr_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      rate: 141.25,
+      fees: 6.99
+    };
+    const createRes = await apiPost(request, ENDPOINTS.PAYMENT.CREATE.path, createBody);
+    const createdPayment = await getResponseBody(createRes);
+    await attachRequestResponse('POST', ENDPOINTS.PAYMENT.CREATE.path, createBody, createRes, createdPayment);
+    expect(createRes.status()).toBe(200);
+    expect(createdPayment).toHaveProperty('paymentIdentifier');
+
+    const paymentIdentifier = createdPayment.paymentIdentifier;
     const { path } = buildEndpoint('PAYMENT', 'GET_STATUS', { paymentIdentifier });
     const response = await apiGet(request, path, TENANT_HEADERS, { client_id: '20505' });
     const responseBody = await getResponseBody(response);

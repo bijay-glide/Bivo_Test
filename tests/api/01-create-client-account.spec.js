@@ -80,8 +80,8 @@ test.describe('Create Client Account API - Negative Tests', () => {
 
     await test.step('Validate 400 error response body', async () => {
       expect(response.status()).toBe(400);
-      expect(responseBody.errorCode).toBe('830132');
-      expect(responseBody.userMessage).toBe('Correlation ID must be unique');
+      expect(responseBody.errorCode).toBe('103200030');
+      expect(responseBody.userMessage).toBe('Correlation ID must be unique.');
       expect(responseBody.statusCode).toBe(400);
     });
 
@@ -104,8 +104,8 @@ test.describe('Create Client Account API - Negative Tests', () => {
     await test.step('Validate 412 error response body', async () => {
       expect(response.status()).toBe(412);
       expect(responseBody.errorCode).toBe('5002');
-      expect(responseBody.userMessage).toContain('personalInfo.email');
-      expect(responseBody.userMessage).toContain('must not be empty');
+      expect(responseBody.userMessage).toContain('personal info.email');
+      expect(responseBody.userMessage).toContain('Email is required');
     });
 
   });
@@ -127,8 +127,8 @@ test.describe('Create Client Account API - Negative Tests', () => {
     await test.step('Validate 412 error response body', async () => {
       expect(response.status()).toBe(412);
       expect(responseBody.errorCode).toBe('5002');
-      expect(responseBody.userMessage).toContain('personalInfo.firstName');
-      expect(responseBody.userMessage).toContain('must not be empty');
+      expect(responseBody.userMessage).toContain('personal info.first name');
+      expect(responseBody.userMessage).toContain('First name is required');
     });
 
   });
@@ -142,7 +142,7 @@ test.describe('Create Client Account API - Negative Tests', () => {
 test.describe('Create Client Account API - Data Validation Tests', () => {
 
   test('TC005 - Create account with invalid email format should fail', {
-    annotation: { type: 'description', description: 'Verify that a malformed email address is rejected with 500' }
+    annotation: { type: 'description', description: 'Verify that a malformed email address is rejected with 412' }
   }, async ({ request }) => {
 
     let response, responseBody;
@@ -154,17 +154,17 @@ test.describe('Create Client Account API - Data Validation Tests', () => {
       await attachRequestResponse(ENDPOINTS.ACCOUNT.CREATE.method, ENDPOINTS.ACCOUNT.CREATE.path, accountData, response, responseBody);
     });
 
-    await test.step('Validate 500 error response body', async () => {
-      expect(response.status()).toBe(500);
+    await test.step('Validate 412 error response body', async () => {
+      expect(response.status()).toBe(412);
       expect(responseBody.errorCode).toBe('5002');
-      expect(responseBody.userMessage).toContain('email');
-      expect(responseBody.userMessage).toContain('must be a well-formed email address');
+      expect(responseBody.userMessage).toContain('personal info.email');
+      expect(responseBody.userMessage).toContain('Email format is not valid.');
     });
 
   });
 
   test('TC006 - Create account with invalid phone number should fail', {
-    annotation: { type: 'description', description: 'Verify that a 3-digit phone number is rejected with 500' }
+    annotation: { type: 'description', description: 'Verify that a 3-digit phone number is rejected with 412' }
   }, async ({ request }) => {
 
     let response, responseBody;
@@ -176,17 +176,17 @@ test.describe('Create Client Account API - Data Validation Tests', () => {
       await attachRequestResponse(ENDPOINTS.ACCOUNT.CREATE.method, ENDPOINTS.ACCOUNT.CREATE.path, accountData, response, responseBody);
     });
 
-    await test.step('Validate 500 error response body', async () => {
-      expect(response.status()).toBe(500);
+    await test.step('Validate 412 error response body', async () => {
+      expect(response.status()).toBe(412);
       expect(responseBody.errorCode).toBe('5002');
       expect(responseBody.userMessage).toContain('phoneNumber');
-      expect(responseBody.userMessage).toContain('Phone number format is not valid.');
+      expect(responseBody.userMessage).toContain('must contain between 7 and 15 digits');
     });
 
   });
 
   test('TC007 - Create account with invalid date of birth format should fail', {
-    annotation: { type: 'description', description: 'Verify that date in MM/DD/YYYY format is rejected (API expects YYYY-MM-DD)' }
+    annotation: { type: 'description', description: 'Verify that date in MM/DD/YYYY format is rejected with 400 (API expects YYYY-MM-DD)' }
   }, async ({ request }) => {
 
     let response, responseBody;
@@ -198,10 +198,10 @@ test.describe('Create Client Account API - Data Validation Tests', () => {
       await attachRequestResponse(ENDPOINTS.ACCOUNT.CREATE.method, ENDPOINTS.ACCOUNT.CREATE.path, accountData, response, responseBody);
     });
 
-    await test.step('Validate 500 error response body', async () => {
-      expect(response.status()).toBe(500);
-      expect(responseBody.errorCode).toBe('500012');
-      expect(responseBody.userMessage).toBe('An error occurred while processing the request');
+    await test.step('Validate 400 error response body', async () => {
+      expect(response.status()).toBe(400);
+      expect(responseBody.errorCode).toBe('5001');
+      expect(responseBody.userMessage).toBe('Invalid request payload');
     });
 
   });
@@ -250,8 +250,8 @@ test.describe('Create Client Account API - Data Validation Tests', () => {
     await test.step('Validate 412 error response body', async () => {
       expect(response.status()).toBe(412);
       expect(responseBody.errorCode).toBe('5002');
-      expect(responseBody.userMessage).toContain('personalInfo.firstName');
-      expect(responseBody.userMessage).toContain('must not be empty');
+      expect(responseBody.userMessage).toContain('personal info.first name');
+      expect(responseBody.userMessage).toContain('First name is required');
     });
 
   });

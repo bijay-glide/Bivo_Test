@@ -76,7 +76,8 @@ function generateClientAccountData(overrides = {}) {
     },
     address: {
       addressLine1: faker.location.streetAddress(),
-      addressLine2: "three",
+      // Sandbox enforces addressLine2 length 1–80; empty string is rejected (412 errorCode 5002).
+      addressLine2: faker.location.secondaryAddress(),
       zipCode: faker.location.zipCode('#####'),
       city: faker.location.city(),
       state: faker.location.state({ abbreviated: true }),
