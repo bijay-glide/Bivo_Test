@@ -133,6 +133,114 @@ class FxTransactionPage {
     await channelsResponsePromise;
   }
 
+  // ─── Account / Currency / Deliver-to selectors (testId-based) ─────────────────
+  // testId map (confirmed via probe on local build, June 2026):
+  //   You-send input             → SendMoney-amount-send
+  //   From currency button       → send-receive-currency-{fromCur}  (e.g. send-receive-currency-USD)
+  //   From account options       → from-account-option-{last4}      (last 4 of ddaNumber from account-info API)
+  //   Recipient amount input     → SendMoney-amount-recipient
+  //   Recipient currency button  → receive-receive-currency-USD     (suffix is static — match by prefix)
+  //   Recipient currency options → receive-currency-option-{CUR}    (e.g. GBP, EUR, USD)
+  //   Deliver-to current button  → deliver-to-{label}               (dynamic, e.g. "deliver-to-IBAN powered by Visa Direct")
+  //   Deliver-to options         → deliver-to-option-{label}        (e.g. IBAN, Instant Card Payout, SWIFT Payment)
+
+  /**
+   * Selects the FROM account in the "You send" section.
+   * Opens the From dropdown (send-receive-currency-* button), then clicks
+   * from-account-option-{last4}. last4 = last 4 digits of the account's
+   * ddaNumber from the account-info API (NOT the accountNumber).
+   *
+   * @param {string} ddaLast4 - e.g. '5679' for ddaNumber 99911330007025679
+   */
+  async selectFromAccountByDdaLast4(ddaLast4) {
+    await this.page.locator('[data-testid^="send-receive-currency-"]').first().click();
+    const option = this.page.getByTestId(`from-account-option-${ddaLast4}`);
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  }
+
+  /**
+   * Selects the recipient currency. Opens the recipient currency dropdown
+   * (receive-receive-currency-* button — suffix is static so prefix-matched),
+   * clicks receive-currency-option-{CUR}, then waits for the exchange-rate
+   * API to settle so the deliver-to section re-renders for the new currency.
+   *
+   * @param {string} currency - e.g. 'GBP', 'EUR', 'USD'
+   */
+  async selectRecipientCurrency(currency) {
+    const currencyBtn = this.page.locator('[data-testid^="receive-receive-currency-"]').first();
+    await expect(currencyBtn).toBeVisible({ timeout: 15000 });
+
+    // Already selected (e.g. GBP is the GB default)? Don't touch the dropdown —
+    // re-clicking the same option cancels the in-flight rate fetch and leaves the
+    // exchange rate at 0, which blocks amount entry (Continue stays disabled).
+    const current = ((await currencyBtn.textContent()) || '').trim();
+    if (current === currency) {
+      await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      return;
+    }
+
+    await currencyBtn.click();
+    const option = this.page.getByTestId(`receive-currency-option-${currency}`);
+    await expect(option).toBeVisible({ timeout: 10000 });
+
+    const ratePromise = this.page.waitForResponse(
+      (r) =>
+        r.url().includes('/remittance/v1/international/payment/currency/rate') &&
+        r.request().method() === 'GET' &&
+        r.ok(),
+      { timeout: 15000 },
+    ).catch(() => {});
+    await option.click();
+    await expect(currencyBtn, `recipient currency button should switch to ${currency}`).toContainText(currency, { timeout: 10000 });
+    await ratePromise;
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  }
+
+  /**
+   * Asserts the currently-selected deliver-to channel. The button's testId is
+   * dynamic: deliver-to-{label}, e.g. "deliver-to-IBAN powered by Visa Direct".
+   *
+   * @param {string} label - exact label, e.g. 'IBAN', 'IBAN powered by Visa Direct', 'Bank Deposit'
+   */
+  async verifyDeliverToSelected(label) {
+    await expect(this.page.getByTestId(`deliver-to-${label}`)).toBeVisible({ timeout: 15000 });
+  }
+
+  /**
+   * Picks a deliver-to channel from the dropdown. Clicks the current
+   * deliver-to-* button to open the option list, then clicks
+   * deliver-to-option-{label}. After selection the button's testId becomes
+   * deliver-to-{label}, which is asserted.
+   *
+   * @param {string} label - e.g. 'IBAN', 'Instant Card Payout', 'SWIFT Payment', 'PayPal'
+   */
+  async selectDeliverToOption(label) {
+    const currentBtn = this.page.locator('[data-testid^="deliver-to-"]:not([data-testid^="deliver-to-option-"])').first();
+    await expect(currentBtn).toBeVisible({ timeout: 15000 });
+    await currentBtn.click();
+    const option = this.page.getByTestId(`deliver-to-option-${label}`);
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+    await this.verifyDeliverToSelected(label);
+  }
+
+  /**
+   * Fills the UK IBAN banking form, with an optional SWIFT Code field.
+   * The SWIFT Code field appears when EUR (or other non-GBP currencies) is
+   * selected as the recipient currency for IBAN delivery to the UK.
+   *
+   * @param {{ iban: string, swiftCode?: string|null }} params
+   */
+  async enterIbanWithOptionalSwift({ iban, swiftCode = null }) {
+    await this.page.getByRole('textbox', { name: 'Enter IBAN number' }).fill(iban);
+    if (swiftCode) {
+      await this.page.getByRole('textbox', { name: 'Enter SWIFT Code' }).fill(swiftCode);
+    }
+    await this.continue();
+  }
+
   /** Business-tab variant — waits for beneficiary_type=BUSINESS channels response, then
    *  networkidle so the rate + channels APIs are fully settled before amount entry. */
   async selectBusinessDestinationCountryByTestId(countryCode) {
@@ -160,13 +268,29 @@ class FxTransactionPage {
     await this.sendAmountInput.pressSequentially(amount + '00', { delay: 50 });
   }
 
-  // Click, select-all, keyboard.type — robust against React re-renders that can
+  /**
+   * Clears the masked send-amount field. The field builds its value right-to-left
+   * from raw digits, and selectText()/select-all does NOT replace it — a fresh type
+   * appends to the existing value (e.g. "5839" typed onto "$58.39" → "$583,958.39").
+   * So we delete digit by digit until the field reads zero/empty.
+   */
+  async clearSendAmount() {
+    await this.sendAmountInput.click();
+    await this.sendAmountInput.press('End');
+    for (let i = 0; i < 20; i++) {
+      const digits = (await this.sendAmountInput.inputValue().catch(() => '')).replace(/\D/g, '');
+      if (!digits || Number(digits) === 0) break;
+      await this.page.keyboard.press('Backspace');
+      await this.page.waitForTimeout(30);
+    }
+  }
+
+  // Click, clear, keyboard.type — robust against React re-renders that can
   // truncate pressSequentially mid-type when exchange-rate APIs respond slowly.
   async enterSendAmountWithData(data) {
     await expect(this.sendAmountInput).toBeVisible({ timeout: 20000 });
     await expect(this.sendAmountInput).toBeEditable();
-    await this.sendAmountInput.click();
-    await this.sendAmountInput.selectText();
+    await this.clearSendAmount();
     await this.page.keyboard.type(data.amountInput);
   }
 
@@ -185,8 +309,9 @@ class FxTransactionPage {
     await expect(this.sendAmountInput).toBeEditable();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      await this.sendAmountInput.click();
-      await this.sendAmountInput.selectText();
+      // Clear first — selectText() does not replace this masked field, so a retry
+      // would otherwise append to the previous attempt's digits and balloon the amount.
+      await this.clearSendAmount();
       // keyboard.type dispatches at page level — survives React element replacement
       await this.page.keyboard.type(data.amountInput);
       // Allow React to process all onChange events
@@ -350,6 +475,137 @@ class FxTransactionPage {
       responseBody,
       referenceId: responseBody.referenceId,
     };
+  }
+
+  // ─── Bu-web business FX testid flow (unified payee + banking forms) ─────────
+  // Every GB channel renders the addpayeedetails-* payee form and addpayeeaddress-*
+  // banking form. The payee form is name-only for GBP/EUR and name+address for USD
+  // (discriminated by the address field). Banking field set varies by channel.
+
+  /**
+   * Fills the payee form (testid). Names always; address block only when present
+   * (USD channels). Verify-and-retry the names since the form can re-render.
+   * @returns {Promise<'extended'|'name-only'>} which form was filled
+   */
+  async addPayeeAutoByTestId({ firstName, lastName, addressOne, city, state, postalCode }) {
+    await this.page.getByRole('button', { name: 'Add Payee' }).click();
+    const first = this.page.getByTestId('addpayeedetails-first-name-input');
+    const last = this.page.getByTestId('addpayeedetails-last-name-input');
+    await first.waitFor({ state: 'visible', timeout: 15000 });
+    for (let i = 0; i < 3; i++) {
+      await first.fill(firstName);
+      await last.fill(lastName);
+      await this.page.waitForTimeout(300);
+      if ((await first.inputValue()) === firstName && (await last.inputValue()) === lastName) break;
+    }
+
+    const address = this.page.getByTestId('addpayeedetails-address-one-input');
+    const isExtended = await address.isVisible({ timeout: 2500 }).catch(() => false);
+    if (isExtended) {
+      await address.fill(addressOne);
+      await this.page.getByTestId('addpayeedetails-city-input').fill(city);
+      await this.page.getByTestId('addpayeedetails-state-input').fill(state);
+      await this.page.getByTestId('addpayeedetails-postal-code-input').fill(postalCode);
+    }
+    await this.continue();
+    return isExtended ? 'extended' : 'name-only';
+  }
+
+  /**
+   * Fills the banking form (testid) for a GB channel. The account-number field
+   * (addpayeeaddress-bank-account-number-input) doubles as the IBAN field.
+   * @param {{ channel: string, currency: string, data: object }} params
+   */
+  async fillFxBankingByTestId({ channel, currency, data }) {
+    const account = this.page.getByTestId('addpayeeaddress-bank-account-number-input');
+    const byId = (id) => this.page.getByTestId(`addpayeeaddress-${id}`);
+
+    if (channel === 'IBAN powered by Visa Direct') {
+      await account.fill(data.iban);
+    } else if (channel === 'IBAN') {
+      await account.fill(data.iban);
+      await byId('swift-code-input').fill(data.swiftCode);
+    } else if (channel === 'Bank Deposit' && currency === 'GBP') {
+      await account.fill(data.accountNumber);
+      await byId('bank-code-input').fill(data.sortCode); // "Enter sort code"
+    } else if (channel === 'Bank Deposit' || channel === 'Domestic Payment') {
+      await account.fill(data.accountNumber);
+      await byId('routing-code-input').fill(data.routingNumber);
+    } else if (channel === 'SWIFT Payment') {
+      await account.fill(data.accountNumber);
+      await byId('bank-name-input').fill(data.bankName);
+      await byId('swift-code-input').fill(data.swiftCode);
+      await byId('bank-code-input').fill(data.intermediarySwift); // intermediary SWIFT (optional)
+    } else if (channel === 'Wire SWIFT') {
+      await account.fill(data.accountNumber);
+    } else {
+      throw new Error(`fillFxBankingByTestId: unsupported "${channel}" → ${currency}`);
+    }
+    await this.continue();
+  }
+
+  /**
+   * Instant Card Payout banking step: fills the card number inside the PGW vault iframe,
+   * clicks Link Card, captures POST /pgw/v1/card (must return an identifier), asserts
+   * "Card Linked Successfully", then continues to the review screen.
+   *
+   * Only the PAN is required (expiry/cvv are sent null). The test card 4761348010000127
+   * is the only number accepted by the sandbox vault.
+   *
+   * @param {string} cardNumber
+   * @returns {Promise<{ cardResponse: import('@playwright/test').APIResponse, identifier: string }>}
+   */
+  async linkCardAndCaptureApi(cardNumber) {
+    // /pgw/v1/card is posted by the vault iframe to info.bivotech.co (cross-origin) —
+    // page-level response events still observe subframe responses.
+    const cardApiPromise = this.page.waitForResponse(
+      (r) => r.url().includes('/pgw/v1/card') && r.request().method() === 'POST',
+      { timeout: 30000 },
+    );
+
+    const cardFrame = this.page.locator('iframe').first().contentFrame();
+    const cardInput = cardFrame.getByRole('textbox', { name: 'Card Number' });
+    await cardInput.waitFor({ state: 'visible', timeout: 15000 });
+    await cardInput.fill(cardNumber);
+
+    await this.page.getByRole('button', { name: 'Link Card' }).click();
+
+    const cardResponse = await cardApiPromise;
+    expect(cardResponse.ok(), 'POST /pgw/v1/card should succeed').toBeTruthy();
+    let cardBody = {};
+    try {
+      cardBody = await cardResponse.json();
+    } catch {
+      cardBody = {};
+    }
+
+    await expect(this.page.locator('#root')).toContainText('Card Linked Successfully', { timeout: 20000 });
+    await this.continue();
+
+    return { cardResponse, identifier: cardBody.identifier };
+  }
+
+  /** Fills the optional review note/description only if such a field is present (USD channels omit it). */
+  async fillFxPaymentNoteIfPresent(note) {
+    const userWebNote = this.page.getByRole('textbox', { name: 'Sent from Bivo' });
+    if (await userWebNote.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await userWebNote.fill(note);
+      return;
+    }
+    const desc = this.page.getByRole('textbox', { name: 'Description' });
+    if (await desc.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await desc.fill(note);
+    }
+  }
+
+  /** Structural review assertion (labels + payee name) — exact amounts/fees vary with live FX, so not asserted. */
+  async verifyFxReviewStructure({ firstName, lastName }) {
+    const root = this.page.locator('#root');
+    await expect(root).toContainText('Exchange rate');
+    await expect(root).toContainText('Send amount in USD');
+    await expect(root).toContainText('Fees');
+    await expect(root).toContainText('Total amount in USD');
+    await expect(root).toContainText(`${firstName} ${lastName}`);
   }
 
   // ─── Step 3 | IBAN ─────────────────────────────────────────────────────────
@@ -640,9 +896,25 @@ class FxTransactionPage {
     await this.page.getByRole('button', { name: 'Confirm Transaction' }).click();
   }
 
-  /** Review screen memo — maps to `description` on POST /international/payment (e.g. "Sent from Bivo"). */
+  /** Review screen memo — maps to `description` on POST /international/payment (e.g. "Sent from Bivo").
+   *  The placeholder differs by surface: user-web uses "Sent from Bivo", bu-web uses "Description". */
   async fillFxPaymentNote(note) {
-    await this.page.getByRole('textbox', { name: 'Sent from Bivo' }).fill(note);
+    const userWebNote = this.page.getByRole('textbox', { name: 'Sent from Bivo' });
+    if (await userWebNote.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await userWebNote.fill(note);
+      return;
+    }
+    await this.page.getByRole('textbox', { name: 'Description' }).fill(note);
+  }
+
+  /** Bu-web business FX review screen requires an Invoice Number for some destinations
+   *  (e.g. IN). User-web has no such field, so fill it only when present. */
+  async fillFxInvoiceNumberIfPresent(invoiceNumber) {
+    const field = this.page.getByRole('textbox', { name: 'Invoice Number' });
+    if (await field.isVisible({ timeout: 3000 }).catch(() => false)) {
+      const value = invoiceNumber || `INV-${Math.floor(Math.random() * 1e9)}`;
+      await field.fill(value);
+    }
   }
 
   /**
@@ -653,7 +925,9 @@ class FxTransactionPage {
     const paymentPromise = this.page.waitForResponse(
       (response) => {
         const url = response.url();
-        if (!url.includes('/remittance/v1/international/payment')) return false;
+        // user-web posts to /remittance/v1/international/payment; bu-web posts to
+        // /business/v1/remittance/payment — accept either.
+        if (!url.includes('/international/payment') && !url.includes('/remittance/payment')) return false;
         if (url.includes('/currency/')) return false;
         if (response.request().method() !== 'POST') return false;
         return response.ok();

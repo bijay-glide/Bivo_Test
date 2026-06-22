@@ -25,7 +25,21 @@ const userWebFxMultiCountryFiles = [
   'ui/user-web/1.8b ui_userweb_fx_multicountry_business.spec.js',
 ];
 
-const buWebOnboardingFiles = ['ui/bu-web/1.1 ui_buweb_signup.spec.js'];
+const buWebOnboardingFiles = ['ui/bu-web/onboarding.spec.js'];
+
+const buWebParallelFiles = [
+  'ui/bu-web/1.4*',
+  'ui/bu-web/1.5*',
+  'ui/bu-web/1.6 *',
+  'ui/bu-web/1.7*',
+  'ui/bu-web/1.8*',
+  'ui/bu-web/1.9*',
+  'ui/bu-web/1.10*',
+  'ui/bu-web/1.11*',
+  'ui/bu-web/1.12*',
+  'ui/bu-web/1.13*',
+  'ui/bu-web/1.14*',
+];
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -113,6 +127,13 @@ module.exports = defineConfig({
       name: 'UI bu-web onboarding',
       testMatch: buWebOnboardingFiles,
       fullyParallel: false,
+      use: { ...uiServerUse }
+    },
+    {
+      name: 'UI bu-web parallel',
+      testMatch: buWebParallelFiles,
+      fullyParallel: true,
+      dependencies: ['UI bu-web onboarding'],
       use: { ...uiServerUse }
     },
     {

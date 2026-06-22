@@ -88,7 +88,9 @@ function generateRandomSSN() {
  */
 function generateUserTestData() {
   const firstName = faker.person.firstName();
-  const lastName = faker.person.lastName();
+  // faker ~5% of the time returns compound surnames (e.g. "Hackett-Reynolds");
+  // strip spaces/dashes/apostrophes so the name stays a single clean word.
+  const lastName = faker.person.lastName().replace(/[ '-]/g, '');
   const phoneNumber = generateUniqueSignupPhoneNumber();
   const email = generateSignupEmail(firstName, lastName);
 
@@ -524,6 +526,34 @@ function generateBankingDetailsForBusiness(countryCode) {
   return generateBankingDetails(countryCode);
 }
 
+/**
+ * Generates fresh US ACH/Wire payee details for the bu-web / individual US payment flow.
+ * Every call yields a unique payee so parallel scenarios (Wire + ACH) and repeated runs
+ * never collide on the same transactions-list row.
+ *
+ * Field constraints (from the personal-info / account-info field configs):
+ *   address_one  ^.{0,80}$   city ^.{0,128}$   state ^.{0,64}$
+ *   bank_account_number ^[a-zA-Z0-9]{2,80}$   routing_code — no server validation in sandbox
+ *
+ * @param {object} options - Optional field overrides
+ * @returns {object} US payment payee data
+ */
+function generateUsPaymentPayee(options = {}) {
+  const firstName = options.firstName || faker.person.firstName().replace(/[^a-zA-Z]/g, '');
+  const lastName = options.lastName || faker.person.lastName().replace(/[^a-zA-Z]/g, '');
+
+  return {
+    firstName,
+    lastName,
+    addressOne: options.addressOne || faker.location.streetAddress(),
+    city: options.city || faker.location.city(),
+    state: options.state || faker.location.state({ abbreviated: true }),
+    postalCode: options.postalCode || faker.location.zipCode('#####'),
+    bankAccountNumber: options.bankAccountNumber || generateRandomDigits(12),
+    routingNumber: options.routingNumber || generateRandomDigits(9),
+  };
+}
+
 const BU_WEB_HEAR_ABOUT_OPTIONS = [
   'Friend / Colleagues', 'Online search', 'Google Ads', 'LinkedIn',
   'Facebook', 'Twitter', 'YouTube', 'Instagram', 'Direct email', 'Other',
@@ -610,9 +640,24 @@ function generateBuWebTestData() {
   };
 }
 
+/**
+ * Account name for the bu-web "Add an Account" modal.
+ * The field validates "No number or special char allowed." — only letters and
+ * spaces enable the Add Account button, so strip everything else from faker words.
+ *
+ * @returns {string}
+ */
+function generateAccountName() {
+  const words = `${faker.word.adjective()} ${faker.word.noun()}`;
+  const cleaned = words.replace(/[^a-zA-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return `QA ${cleaned || 'Account'}`;
+}
+
 module.exports = {
   generateUserTestData,
+  generateAccountName,
   generateBuWebTestData,
+  generateUsPaymentPayee,
   generateIncomingWireData,
   generateWireInstructionData,
   generateWithdrawFundData,
