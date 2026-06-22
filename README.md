@@ -1,6 +1,6 @@
 # Playwright Bivo
 
-End-to-end and API tests for Bivo using [Playwright Test](https://playwright.dev/). UI flows are split into **BCR** (pay-embedded) and **standalone user-web** suites; API specs hit the tenant REST API.
+End-to-end and API tests for Bivo using [Playwright Test](https://playwright.dev/). UI flows cover three surfaces — **BCR** (pay-embedded), **standalone user-web**, and **bu-web** (business) — while API specs hit the tenant REST API directly.
 
 ## Quick start
 
@@ -9,7 +9,8 @@ npm install
 cp .env.example .env   # then edit with real values
 npm test               # all projects (API + UI)
 npm run test:api       # API only
-npm run test:ui        # UI only (see below)
+npm run test:ui:userweb:full   # user-web onboarding + parallel
+npm run test:ui:buweb:full     # bu-web onboarding + parallel
 ```
 
 Open the HTML report after a run: `npm run show:report`.
@@ -25,25 +26,26 @@ Copy **`.env.example`** to **`.env`**. Important variables:
 
 | Variable | Role |
 |----------|------|
-| `UI_ENV` | UI target selector: `dev` or `local` |
-| `UI_BASE_URL_DEV`, `UI_BASE_URL_LOCAL` | UI base URLs used by `UI_ENV` |
+| `UI_ENV` | UI target selector: `local` or `sandbox` |
+| `UI_BASE_URL_LOCAL`, `UI_BASE_URL_SANDBOX` | UI base URLs used by `UI_ENV` |
 | `UI_BASE_URL` | Optional explicit UI override (highest priority) |
 | `HOST` | Backend host used by helper API calls (OTP/identity helpers) |
 | `API_BASE_URL` | Base URL for API tests (`playwright.config.js`) |
 | `TENANT_IDENTIFIER`, `API_USERNAME`, `API_PASSWORD` | API auth |
 | Keycloak / `TRANSACTION_*` | OTP helper and permission grants (see `.env.example`) |
 | `LOGIN_PHONE_RAW`, `LOGIN_PASSWORD` | Skip onboarding when running parallel UI specs alone |
+| `BUWEB_DEVICE_ID` | Pinned UUID so bu-web stays device-trusted (skips TOTP) across runs |
 
 `.env` is gitignored; never commit secrets. Use `.env.example` as the template only.
 
 Quick switch examples:
 
 ```bash
-# Dev FE
-UI_ENV=dev npm run test:ui
-
 # Local FE (useful while testing local frontend changes)
-UI_ENV=local npm run test:ui
+UI_ENV=local npm run test:ui:buweb:full
+
+# Deployed sandbox FE
+UI_ENV=sandbox npm run test:ui:buweb:full
 ```
 
 ## Repository layout
@@ -53,50 +55,66 @@ tests/
   api/                 # REST API specs (*.spec.js)
   ui/
     bcr/               # BCR UI — 1.1 signup … 1.5 FX
-    user-web/          # Standalone user-web — 1.1 … 1.6 US ACH, etc.
+    user-web/          # Standalone user-web — onboarding, FX multi-country, US ACH, etc.
+    bu-web/            # Business — onboarding (1.1–1.3) + parallel flows 1.4–1.14
 fixtures/              # Playwright fixtures (e.g. ui-fixtures)
-pages/                   # Page objects
-utils/                   # OTP, shared state, data generators, helpers
+pages/                 # Page objects
+utils/                 # OTP, shared state, data generators, helpers
+k6/                    # Load tests (Grafana k6) — see below
 playwright.config.js
 ```
 
-Legacy: `tests/ui/user-web/ui_legacy_signup_user.js` is not matched by default `*.spec.js` globs unless you pass the path explicitly.
+## Test surfaces
+
+- **API** (`tests/api/`) — hit the tenant REST API via Playwright's `request` fixture; independent, run in any order.
+- **BCR** (`tests/ui/bcr/`) — pay-embedded flow at `/pay/user-web/`.
+- **user-web** (`tests/ui/user-web/`) — standalone flow at `/user-web/`.
+- **bu-web** (`tests/ui/bu-web/`) — business flow at `/bu-web/`. Onboarding (`1.1`–`1.3`, merged into `onboarding.spec.js`) creates a business user and configures **TOTP 2FA**; parallel specs `1.4`–`1.14` depend on that state.
 
 ## How UI runs are grouped
 
-`playwright.config.js` defines four UI **projects**:
+`playwright.config.js` defines these projects (each "parallel" project declares a `dependencies` on its onboarding project):
 
-1. **UI BCR onboarding** — `1.1`, `1.2`, `1.3` (serial, one worker)
-2. **UI BCR parallel** — depends on (1); `1.4`, `1.5` with more workers
-3. **UI user-web onboarding** — user-web `1.1`–`1.3` serial
-4. **UI user-web parallel** — depends on (3); `1.4`–`1.6`
+| Project | Files |
+|---------|-------|
+| **UI BCR onboarding** | BCR `1.1`–`1.3` (serial) |
+| **UI BCR parallel** | BCR `1.4`, `1.5` |
+| **UI user-web onboarding** | merged `onboarding.spec.js` (serial) |
+| **UI user-web parallel** | user-web `1.4`, `1.6`, `1.9`, `1.10`, `1.11` |
+| **UI user-web link card only** | user-web `1.7` |
+| **UI user-web FX multi-country** | user-web `1.8`, `1.8b` |
+| **UI bu-web onboarding** | merged `onboarding.spec.js` (serial) |
+| **UI bu-web parallel** | bu-web `1.4`–`1.14` |
+| **UI user-web exploratory** | `exploratory.spec.js` |
 
-Full UI suite: `npm run test:ui`. Per surface: `npm run test:ui:bcr` or `npm run test:ui:userweb`.
+Per surface (onboarding + parallel together): `npm run test:ui:bcr`, `npm run test:ui:userweb:full`, `npm run test:ui:buweb:full`.
 
-**Running only a parallel file** (e.g. `1.5` FX) without re-running `1.1`–`1.3`: the parallel projects declare a dependency on onboarding. Use **`--no-deps`** when you already have login state. The `npm run test:ui:userweb:fx` (and similar `wire` / `us`, BCR `wire` / `fx`) scripts pass `--no-deps`. You still need fresh **`test-results/shared-state-*.json`** from a prior onboarding run, or `LOGIN_PHONE_RAW` / passwords in `.env`.
-
-Shared state for UI is split by suite (`shared-state-bcr.json` / `shared-state-userweb.json`); see `tests/ui/README.txt`.
+**Running only a parallel file** (e.g. bu-web `1.9` UK FX) without re-running onboarding: parallel projects depend on onboarding, so pass **`--no-deps`** when you already have login state. The targeted `test:ui:*:*` scripts pass `--no-deps`. You still need fresh shared state from a prior onboarding run (user-web: `shared-state-userweb.json`; bu-web: `.bivo-state/shared-state-buweb.json`), or `LOGIN_PHONE_RAW` / `LOGIN_PASSWORD` in `.env`.
 
 ## npm scripts (summary)
 
 | Script | Purpose |
 |--------|---------|
 | `test` | All configured projects |
-| `test:api` | API project only |
-| `test:ui` | All four UI projects |
-| `test:ui:bcr` / `test:ui:userweb` | One UI surface |
-| `test:ui:*:signup`, `first-login`, … | Targeted files (see `package.json`) |
-| `pw:ui` / `pw:ui:browser` | Interactive UI mode for `tests/ui/` only |
-| `pw:ui:all` | UI mode including API (large tree) |
-| `pw:ui:api` | UI mode, API project only |
+| `test:api` | API project only (`test:api:<name>` for a single spec) |
+| `test:ui:bcr` | BCR onboarding + parallel |
+| `test:ui:userweb:full` | user-web onboarding + parallel + link-card + FX multi-country |
+| `test:ui:buweb:full` | bu-web onboarding + parallel |
+| `test:ui:userweb:*`, `test:ui:buweb:*` | Targeted single flows (wire, us, linkcard, fx-multi, uk-fx, movemoney, payee, settings-auth, …) |
+| `pw:ui` / `pw:ui:userweb` / `pw:ui:api` | Interactive UI mode |
+| `capture:apis*` | Re-run selected specs with `CAPTURE_APIS=1` to record API traffic |
+| `api:summary` | Generate API summary (`scripts/api-summary.js`) |
 | `show:report` | Open last HTML report |
+| `k6:probe` / `k6:load` / `k6:load:dashboard` | Load tests (see below) |
+
+See `package.json` for the full list of targeted `test:ui:*` scripts.
 
 ## CLI examples
 
 ```bash
 npx playwright test --project="API Tests"
-npx playwright test --project="UI user-web onboarding" "tests/ui/user-web/1.1 ui_userweb_signup.spec.js"
-npx playwright test --no-deps --project="UI user-web parallel" "tests/ui/user-web/1.5 ui_userweb_fx_transaction.spec.js"
+npx playwright test --no-deps --project="UI bu-web parallel" "tests/ui/bu-web/1.9 ui_buweb_uk_fx.spec.js"
+npx playwright test --no-deps --project="UI user-web parallel" "tests/ui/user-web/1.4 ui_userweb_setup_wire_payment.spec.js"
 ```
 
 ## Timeouts (`playwright.config.js`)
@@ -106,7 +124,7 @@ npx playwright test --no-deps --project="UI user-web parallel" "tests/ui/user-we
 - Action: **15s** (global `use`)
 - Navigation: **30s**
 
-CI sets `forbidOnly` and **retries**; local runs use **workers: 1** by default, with higher workers only on UI parallel projects.
+CI sets `forbidOnly` and **retries**; local runs use **workers: 1** by default (overridden via `UI_WORKERS` and per-project parallel settings).
 
 ## Reports and artifacts
 
@@ -142,7 +160,7 @@ Add these three variables to your `.env`:
 | `BIVO_ITERATIONS` | How many times each VU runs the full flow |
 | `BIVO_PROBE_MAX_RETRIES` | Max OTP attempts per phone during the probe |
 
-Phones under test are listed in `k6/phones.json`. Adding a phone there automatically adds a VU on the next run.
+Phones under test are listed in `k6/phones.json`. The VU count is derived automatically (`BIVO_VUS` is injected by the npm script from the phone count), so adding a phone there adds a VU on the next run.
 
 ### Two-step workflow
 
@@ -155,7 +173,7 @@ npm run k6:probe
 This iterates through every phone in `phones.json` and performs OTP + device registration so future logins skip the OTP challenge. Each phone shows ✓ or ✗ in the summary. Re-run with a higher retry count if any phones fail:
 
 ```bash
-k6 run k6/device-trust-probe.js -e BIVO_PROBE_MAX_RETRIES=5
+BIVO_PROBE_MAX_RETRIES=5 npm run k6:probe
 ```
 
 **Step 2 — run the load test** (all phones must be trusted first):
