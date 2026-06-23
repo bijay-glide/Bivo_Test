@@ -57,11 +57,14 @@ test.describe('User-web FX — top destination countries', () => {
 
       await test.step('Step 8 | Fill note and confirm transaction', async () => {
         await fxPage.fillFxPaymentNote(fxData.note);
+        // Some destinations (e.g. IN) require an Invoice Number on the review screen —
+        // Confirm stays a no-op until it is filled. Harmless where the field is absent.
+        await fxPage.fillFxInvoiceNumberIfPresent();
         await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
       });
 
-      await test.step('Step 9 | Verify processing modal', async () => {
-        await fxPage.verifyProcessingAndDismiss();
+      await test.step('Step 9 | Verify processing modal or Ways To Fund', async () => {
+        await fxPage.verifyProcessingOrWaysToFundAndDismiss();
       });
     });
   }

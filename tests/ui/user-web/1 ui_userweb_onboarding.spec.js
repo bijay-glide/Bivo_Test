@@ -11,9 +11,16 @@ const { getOtpForPhoneNumber } = require('../../../utils/otp-helper');
 const { generateUserTestData } = require('../../../utils/test-data-generator');
 const { saveSignupData, loadSignupData, loadClientId, saveClientData } = require('../../../utils/shared-state');
 const { grantAchLinkingPermission } = require('../../../utils/helpers');
+const { depositFundsViaWire } = require('../../../utils/transaction-helper');
 
 const FIRST_LOGIN_PASSWORD = process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
 const DEPOSIT_AMOUNT = '$90.00';
+
+// Single consolidated wire top-up done at the end of onboarding 1.3 so every downstream
+// parallel user-web spec has funds to spend (mirrors bu-web). Specs no longer pre-fund
+// themselves. Pass the figure as-is: the incoming-wire API treats 20000 as $20,000 USD —
+// do NOT add trailing zeros.
+const TOPUP_AMOUNT = 20000;
 
 // serial: 1.1 → 1.2 → 1.3 run on the same worker in order, regardless of --workers count.
 // If 1.1 fails, 1.2 and 1.3 are automatically skipped.
@@ -244,6 +251,39 @@ test.describe('User-web onboarding', () => {
     await test.step('Step 13 | Verify pending transaction in wallet ledger', async () => {
       await dashboardPage.goToAccountsTransactions();
       await addFundsPage.verifyPendingTransaction(DEPOSIT_AMOUNT);
+    });
+
+    await test.step(`Step 14 | Top-up account via incoming wire API ($${TOPUP_AMOUNT.toLocaleString()})`, async () => {
+      // One large settled top-up so every downstream parallel spec has funds to spend.
+      await depositFundsViaWire(request, userData.accountNumber, { amount: TOPUP_AMOUNT });
+    });
+
+    await test.step('Step 15 | Refresh dashboard and verify balance reflects the top-up', async () => {
+      const balancePromise = page.waitForResponse(
+        (r) =>
+          r.url().includes('/transactions/v1/transactions/accountbalance') &&
+          r.request().method() === 'GET' &&
+          r.ok(),
+        { timeout: 30000 },
+      );
+
+      // Return to the dashboard (where the balance API fires) and refresh.
+      const dashboardLink = page.getByTestId('Sidebar-nav-dashboard');
+      if (await dashboardLink.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await dashboardLink.click();
+      } else {
+        await page.getByRole('link', { name: /Dashboard/ }).first().click();
+      }
+      await page.reload({ waitUntil: 'networkidle' });
+
+      const balance = await (await balancePromise).json();
+      // availableToSpend reads back in the same unit the wire top-up was sent in (a 20000
+      // top-up reads as 20000). The pending $90 Chase ACH sits in totalPendingAmount, so
+      // availableToSpend reflects the settled wire top-up.
+      expect(
+        balance.availableToSpend,
+        'available balance should reflect the wire top-up',
+      ).toBeGreaterThanOrEqual(TOPUP_AMOUNT);
     });
   });
 
