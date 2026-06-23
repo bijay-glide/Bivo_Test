@@ -15,14 +15,15 @@ const bcrOnboardingFiles = [
 
 // Merged serial spec: 1.1 → 1.2 → 1.3 run in order on one worker via test.describe.configure({ mode: 'serial' }).
 // Originals backed up at tests/ui/user-web/legacy/*.spec.js.bak — restore them if you need to revert.
-const userWebOnboardingFiles = ['ui/user-web/onboarding.spec.js'];
+const userWebOnboardingFiles = ['ui/user-web/1 ui_userweb_onboarding.spec.js'];
 
-const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
+const userWebLinkCardOnlyFile = 'ui/user-web/4 ui_userweb_link_card.spec.js';
 
-/** Multi-country FX suite — individual (1.8) and business (1.8b) run together. */
+/** FX suite — individual (5.1), business (5.2), and UK matrix (5.3) run together. */
 const userWebFxMultiCountryFiles = [
-  'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js',
-  'ui/user-web/1.8b ui_userweb_fx_multicountry_business.spec.js',
+  'ui/user-web/5.1 ui_userweb_fx_multicountry.spec.js',
+  'ui/user-web/5.2 ui_userweb_fx_multicountry_business.spec.js',
+  'ui/user-web/5.3 ui_userweb_uk_fx.spec.js',
 ];
 
 const buWebOnboardingFiles = ['ui/bu-web/onboarding.spec.js'];
@@ -99,11 +100,13 @@ module.exports = defineConfig({
     {
       name: 'UI user-web parallel',
       testMatch: [
-        'ui/user-web/1.4*',
-        'ui/user-web/1.6*',
-        'ui/user-web/1.9*',
-        'ui/user-web/1.10*',
-        'ui/user-web/1.11*',
+        'ui/user-web/2 *',   // wire payment
+        'ui/user-web/3 *',   // us ach
+        'ui/user-web/6 *',   // move money
+        'ui/user-web/7 *',   // add payee
+        'ui/user-web/8 *',   // settings auth
+        'ui/user-web/9.1*',  // add account
+        'ui/user-web/9.2*',  // multicurrency account
       ],
       fullyParallel: true,
       dependencies: ['UI user-web onboarding'],

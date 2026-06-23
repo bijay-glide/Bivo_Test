@@ -1,7 +1,6 @@
 require('./state-suite-env');
 const { test, expect } = require('../../../fixtures/ui-fixtures');
 const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
 const { toCentsInput } = require('../../../utils/amount-input');
 const MoveFundsPage = require('../../../pages/MoveFundsPage');
 

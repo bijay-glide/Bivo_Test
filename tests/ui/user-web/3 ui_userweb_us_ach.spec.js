@@ -1,13 +1,17 @@
 require('./state-suite-env');
 const { test, expect } = require('../../../fixtures/ui-fixtures');
 const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
 const { toCentsInput } = require('../../../utils/amount-input');
 const UsAchPaymentPage = require('../../../pages/UsAchPaymentPage');
 
 const US_PAYMENT_DATA = {
   firstName: 'First Name',
   lastName: 'Last Name',
+  // Address block — required by the US payee form (filled only if the form renders it).
+  addressOne: '123 Test Street',
+  city: 'New York',
+  state: 'NY',
+  postalCode: '10001',
   accountNumber: '1000098444',
   routingNumber: '0001',
   amountUsd: '60.33',
@@ -38,16 +42,17 @@ test.describe('User-web US Payment', () => {
       expect(bivoDdaNumber, 'bivo_dda_number (ddaNumber) should be available from account API').toBeTruthy();
     });
 
-    await test.step('Step 2 | Pre-fund account via API', async () => {
-      await depositFundsViaWire(request, bivoAccountNumber, { amount: 5000 }); // $5000
-    });
-
-    await test.step('Step 3 | Navigate to Create US Payment', async () => {
+    await test.step('Step 2 | Navigate to Create US Payment', async () => {
       await usPaymentPage.navigateToCreateUsPayment();
     });
 
-    await test.step('Step 4 | Add payee and bank details + verify beneficiary account API', async () => {
-      await usPaymentPage.addPayee(US_PAYMENT_DATA.firstName, US_PAYMENT_DATA.lastName);
+    await test.step('Step 3 | Add payee and bank details + verify beneficiary account API', async () => {
+      await usPaymentPage.addPayee(US_PAYMENT_DATA.firstName, US_PAYMENT_DATA.lastName, {
+        addressOne: US_PAYMENT_DATA.addressOne,
+        city: US_PAYMENT_DATA.city,
+        state: US_PAYMENT_DATA.state,
+        postalCode: US_PAYMENT_DATA.postalCode,
+      });
       const beneficiaryApi = await usPaymentPage.addBankDetailsAndCaptureBeneficiaryApi({
         accountNumber: US_PAYMENT_DATA.accountNumber,
         routingNumber: US_PAYMENT_DATA.routingNumber,
@@ -55,13 +60,13 @@ test.describe('User-web US Payment', () => {
       usAchAccountNumber = beneficiaryApi.bankAchAccountNumber || usAchAccountNumber;
     });
 
-    await test.step('Step 5 | Verify vendor details and choose ACH', async () => {
+    await test.step('Step 4 | Verify vendor details and choose ACH', async () => {
       await usPaymentPage.verifyVendorDetailsAndSelectAch({
         usAchAccountLast4: usAchAccountNumber.slice(-4),
       });
     });
 
-    await test.step('Step 6 | Fill transfer details and continue', async () => {
+    await test.step('Step 5 | Fill transfer details and continue', async () => {
       await usPaymentPage.fillTransferDetailsAndContinue({
         amountInputValue,
         message: US_PAYMENT_DATA.message,
@@ -69,7 +74,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 7 | Verify transaction details screen', async () => {
+    await test.step('Step 6 | Verify transaction details screen', async () => {
       await usPaymentPage.verifyReviewDetails({
         firstName: US_PAYMENT_DATA.firstName,
         lastName: US_PAYMENT_DATA.lastName,
@@ -80,7 +85,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 8 | Submit transfer and verify transfer-fund API', async () => {
+    await test.step('Step 7 | Submit transfer and verify transfer-fund API', async () => {
       const captured = await usPaymentPage.submitTransferAndCaptureTransferFundApi();
       transferFundRequest = captured.transferFundRequest;
       transferCorrelationId = captured.correlationId;
@@ -90,7 +95,7 @@ test.describe('User-web US Payment', () => {
       });
     });
 
-    await test.step('Step 9 | Transactions API — row matches ACH transfer', async () => {
+    await test.step('Step 8 | Transactions API — row matches ACH transfer', async () => {
       await usPaymentPage.assertTransactionsApiAchDebitRow({
         accountNumber: bivoAccountNumber,
         correlationId: transferCorrelationId,

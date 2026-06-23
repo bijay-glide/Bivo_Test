@@ -53,3 +53,6 @@ playwright-bivo-api-tests@1.0.0
 
 #plane scripts to import automation tickets
 plane
+
+# Draft / in-progress specs (local only, not for CI)
+tests/ui/user-web/drafts/

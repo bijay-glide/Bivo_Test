@@ -69,6 +69,9 @@ test.describe('User-web FX — Business payee, top destination countries', () =>
 
       await test.step('Step 8 | Fill note and confirm — assert paymentIdentifier returned', async () => {
         await fxPage.fillFxPaymentNote(fxData.note);
+        // Some destinations (e.g. IN) require an Invoice Number on the review screen —
+        // Confirm stays a no-op until it is filled. Harmless where the field is absent.
+        await fxPage.fillFxInvoiceNumberIfPresent();
         const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
         expect(
           paymentIdentifier,
