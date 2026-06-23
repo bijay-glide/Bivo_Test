@@ -39,10 +39,27 @@ class UsAchPaymentPage {
     await createUsPaymentLink.click();
   }
 
-  async addPayee(firstName, lastName) {
+  // Fills the payee personal-info form (data-testid based — the same addpayeedetails-*
+  // component the FX flow uses). The form is name-only on some flows and name+address on
+  // the US payment flow; the address block is filled only when it is actually rendered, so
+  // passing `address` is harmless when absent. Previously this filled name only, which left
+  // Continue disabled (and the test failing) once the US form started requiring an address.
+  async addPayee(firstName, lastName, address = null) {
     await this.page.getByRole('button', { name: 'Add Payee' }).click();
-    await this.page.getByRole('textbox', { name: "Enter beneficiary's first name" }).fill(firstName);
-    await this.page.getByRole('textbox', { name: "Enter beneficiary's last name" }).fill(lastName);
+    const first = this.page.getByTestId('addpayeedetails-first-name-input');
+    const last = this.page.getByTestId('addpayeedetails-last-name-input');
+    await first.waitFor({ state: 'visible', timeout: 15000 });
+    await first.fill(firstName);
+    await last.fill(lastName);
+
+    const addressInput = this.page.getByTestId('addpayeedetails-address-one-input');
+    const hasAddress = await addressInput.isVisible({ timeout: 2500 }).catch(() => false);
+    if (hasAddress && address) {
+      await addressInput.fill(address.addressOne);
+      await this.page.getByTestId('addpayeedetails-city-input').fill(address.city);
+      await this.page.getByTestId('addpayeedetails-state-input').fill(address.state);
+      await this.page.getByTestId('addpayeedetails-postal-code-input').fill(address.postalCode);
+    }
     await this.page.getByRole('button', { name: 'Continue' }).click();
   }
 

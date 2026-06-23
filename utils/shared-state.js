@@ -66,28 +66,12 @@ function saveSignupData(data) {
   const payload = { ...data, savedAt: new Date().toISOString() };
   stripLegacyPhoneCountryField(payload);
   fs.writeFileSync(file, JSON.stringify(payload, null, 2));
-  console.log(`\n💾 Shared state saved → ${file}`);
-  console.log(`   Phone  : ${data.phoneNumber}`);
-  console.log(`   Name   : ${data.firstName} ${data.lastName}`);
-  if (data.clientId != null) {
-    console.log(`   clientId: ${data.clientId}`);
-  }
-  if (data.accountNumber != null) {
-    console.log(`   accountNumber: ${data.accountNumber}`);
-  }
 }
 
 function loadSignupData() {
   const file = activeStateFile();
   const data = readStateFileOrThrow(file);
   normalizePhoneInMemory(data);
-  console.log(`\n📂 Shared state loaded from → ${file}`);
-  console.log(`   Phone    : ${data.phoneNumber}`);
-  console.log(`   Name     : ${data.firstName} ${data.lastName}`);
-  if (data.accountNumber != null) {
-    console.log(`   accountNumber: ${data.accountNumber}`);
-  }
-  console.log(`   Saved at : ${data.savedAt}`);
   return data;
 }
 
@@ -123,15 +107,37 @@ function tryLoadSignupData(maxAgeHours = 8) {
     return null;
   }
 
-  const { file, data } = found;
+  const { data } = found;
   normalizePhoneInMemory(data);
-  console.log(`\n📂 Shared state loaded from → ${file}`);
-  console.log(`   Phone    : ${data.phoneNumber}`);
-  console.log(`   Name     : ${data.firstName} ${data.lastName}`);
-  if (data.accountNumber != null) {
-    console.log(`   accountNumber: ${data.accountNumber}`);
+  return data;
+}
+
+// Like tryLoadSignupData but scoped to the ACTIVE suite's file only (BIVO_UI_STATE_SUITE).
+// Used so user-web specs pick up the user the onboarding suite just created — never a
+// newer-but-different suite's user. Returns null (no throw) when the file is missing,
+// unparseable, has no phoneNumber, or is older than maxAgeHours, so callers can fall back.
+function tryLoadActiveSuiteSignupData(maxAgeHours = 8) {
+  const file = activeStateFile();
+  if (!fs.existsSync(file)) return null;
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch {
+    return null;
   }
-  console.log(`   Saved at : ${data.savedAt}`);
+
+  normalizePhoneInMemory(data);
+  if (!data.phoneNumber) return null;
+
+  // savedAt is written by saveSignupData; treat a missing timestamp as too old to trust.
+  if (!data.savedAt) return null;
+  const ageHours = (Date.now() - new Date(data.savedAt).getTime()) / (1000 * 60 * 60);
+  if (ageHours > maxAgeHours) {
+    console.log(`\n⚠️  ${path.basename(file)} is ${ageHours.toFixed(1)}h old (> ${maxAgeHours}h) — ignoring`);
+    return null;
+  }
+
   return data;
 }
 
@@ -143,9 +149,6 @@ function saveClientData({ clientId, accountNumber }) {
   data.clientSavedAt = new Date().toISOString();
   stripLegacyPhoneCountryField(data);
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
-  console.log(`\n💾 Client data saved → ${file}`);
-  console.log(`   clientId      : ${clientId}`);
-  console.log(`   accountNumber : ${accountNumber}`);
 }
 
 function saveClientId(clientId) {
@@ -161,8 +164,6 @@ function loadClientId() {
         `Run the first-login test first (npm run test:ui:bcr:first-login).`
     );
   }
-  console.log(`\n📂 clientId loaded from → ${file}`);
-  console.log(`   clientId : ${data.clientId}`);
   return data.clientId;
 }
 
@@ -175,8 +176,6 @@ function loadAccountNumber() {
         `Run user-web signup (1.1) or the first-login test that persists account-info first.`
     );
   }
-  console.log(`\n📂 accountNumber loaded from → ${file}`);
-  console.log(`   accountNumber : ${data.accountNumber}`);
   return data.accountNumber;
 }
 
@@ -196,17 +195,13 @@ function saveExtendedState(fields) {
   };
   stripLegacyPhoneCountryField(data);
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
-
-  console.log(`\n💾 Extended state saved → ${file}`);
-  Object.entries(fields).forEach(([k, v]) => {
-    console.log(`   ${k}: ${v}`);
-  });
 }
 
 module.exports = {
   saveSignupData,
   loadSignupData,
   tryLoadSignupData,
+  tryLoadActiveSuiteSignupData,
   saveClientData,
   saveClientId,
   loadClientId,

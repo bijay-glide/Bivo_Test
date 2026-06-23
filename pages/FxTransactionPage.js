@@ -410,21 +410,34 @@ class FxTransactionPage {
     await this.page.getByRole('button', { name: 'Add Payee' }).click();
     await this.page.getByRole('textbox', { name: "Enter beneficiary's first name" }).fill(firstName);
     await this.page.getByRole('textbox', { name: "Enter beneficiary's last name" }).fill(lastName);
+
+    // The personal-info form varies by country (e.g. CN shows names only — no address),
+    // so fill each optional field only when it is actually rendered. Avoids timing out on
+    // inputs that aren't present for a given destination — same pattern as AddPayeePage.
+    const fillIfVisible = async (name, value) => {
+      const field = this.page.getByRole('textbox', { name });
+      if (await field.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await field.fill(value);
+      }
+    };
+
     if (extraFields?.streetAddress) {
-      await this.page.getByRole('textbox', { name: 'Enter street address' }).fill(extraFields.streetAddress);
+      await fillIfVisible('Enter street address', extraFields.streetAddress);
     }
     if (extraFields?.city) {
-      await this.page.getByRole('textbox', { name: "Enter beneficiary's city" }).fill(extraFields.city);
+      await fillIfVisible("Enter beneficiary's city", extraFields.city);
     }
     if (extraFields?.zipCode) {
-      await this.page.getByRole('textbox', { name: 'Enter zip/postal code' }).fill(extraFields.zipCode);
+      await fillIfVisible('Enter zip/postal code', extraFields.zipCode);
     }
     if (extraFields?.phone) {
       // Label varies by country ("Enter your mobile number" for IN, "Enter your phone number" for JP)
       const phoneInput = this.page.getByRole('textbox', { name: /Enter your (mobile|phone) number/i });
-      await phoneInput.click();
-      await phoneInput.selectText();
-      await phoneInput.pressSequentially(extraFields.phone, { delay: 50 });
+      if (await phoneInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await phoneInput.click();
+        await phoneInput.selectText();
+        await phoneInput.pressSequentially(extraFields.phone, { delay: 50 });
+      }
     }
     await this.continue();
   }
@@ -738,6 +751,10 @@ class FxTransactionPage {
       await this.enterBcrPayDetails(bankingDetails);
     } else if (channel === 'nz_bank') {
       await this.enterNzBankDetails(bankingDetails);
+    } else if (channel === 'no_fields') {
+      // Some destinations (e.g. CN in this build) render a banking form with no inputs —
+      // the enabled Continue alone creates the beneficiary account.
+      await this.continue();
     } else {
       throw new Error(`enterBankingDetailsByChannel: unsupported channel "${channel}"`);
     }
@@ -974,6 +991,25 @@ class FxTransactionPage {
     await expect(this.page.getByRole('heading', { name: 'Processing Transaction' })).toBeVisible();
     await expect(this.page.getByRole('heading', { name: 'Our team is processing the transaction and will keep you updated on the progress.' })).toBeVisible();
     await this.page.getByRole('button', { name: 'Got it' }).click();
+  }
+
+  /**
+   * Tolerant post-confirmation check. After a confirmed FX payment the app shows EITHER
+   * "Processing Transaction" (wallet had enough balance) OR "Ways To Fund" (balance low —
+   * the app asks for a funding source). Both prove the payment was accepted; the
+   * paymentIdentifier returned by the payment POST is the definitive "initiated" check.
+   * A freshly-onboarded user has a small balance, so later FX sends land on Ways To Fund.
+   */
+  async verifyProcessingOrWaysToFundAndDismiss({ timeout = 15000 } = {}) {
+    const processingHeading = this.page.getByRole('heading', { name: 'Processing Transaction' });
+    const waysToFundHeading = this.page.getByRole('heading', { name: 'Ways To Fund' });
+    await expect(
+      processingHeading.or(waysToFundHeading),
+      'Expected either Processing Transaction modal or Ways To Fund funding screen',
+    ).toBeVisible({ timeout });
+    if (await processingHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await this.verifyProcessingAndDismiss();
+    }
   }
 
   // ─── Post-transaction verification ────────────────────────────────────────

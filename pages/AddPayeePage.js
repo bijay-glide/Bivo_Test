@@ -189,6 +189,9 @@ class AddPayeePage {
       await this._fillAlipayDetails(bankingDetails);
     } else if (channel === 'rtp') {
       await this._fillRtpDetails(bankingDetails);
+    } else if (channel === 'no_fields') {
+      // Some destinations (e.g. CN in this build) render a banking form with no inputs —
+      // the Continue click below alone creates the beneficiary account.
     } else {
       throw new Error(`fillBankingDetailsByChannelAndCaptureApi: unsupported channel "${channel}"`);
     }

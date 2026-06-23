@@ -6,7 +6,7 @@ const BuWebSignInPage = require('../pages/BuWebSignInPage');
 const VerificationPage = require('../pages/VerificationPage');
 const { authenticator } = require('otplib');
 const { getOtpForPhoneNumber } = require('./otp-helper');
-const { tryLoadSignupData } = require('./shared-state');
+const { tryLoadActiveSuiteSignupData } = require('./shared-state');
 
 const DEFAULT_LOGIN_PASSWORD =
   process.env.LOGIN_PASSWORD || process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
@@ -54,11 +54,23 @@ function normalizePhone(raw) {
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
-// Resolve user data for login-oriented UI tests (env LOGIN_PHONE_RAW, or shared state from 1.1/1.2).
+// Resolve user data for login-oriented UI tests.
+//
+// Priority (mirrors bu-web, which always uses its freshly-onboarded user):
+//   1. The active suite's fresh shared-state user (written by onboarding 1.1–1.3).
+//   2. LOGIN_PHONE_RAW from .env — fallback ONLY, so a --no-deps single-spec run still
+//      works when no fresh state exists (or it's gone stale > 8h). See CLAUDE.md.
+//
+// Previously LOGIN_PHONE_RAW won unconditionally, so the parallel specs logged in as a
+// static old user and ignored the user onboarding had just created — unlike bu-web.
 // Returns object with phoneNumber and optional accountNumber, ddaNumber.
 function resolveUserDataForLogin() {
+  const shared = tryLoadActiveSuiteSignupData();
+  if (shared?.phoneNumber) return shared;
+
   const manualPhone = normalizePhone(process.env.LOGIN_PHONE_RAW);
   if (manualPhone) {
+    console.log('\n⚠️  No fresh onboarded user — falling back to LOGIN_PHONE_RAW from .env');
     return {
       phoneNumber: manualPhone,
       accountNumber: process.env.STANDALONE_ACCOUNT || '',
@@ -66,12 +78,9 @@ function resolveUserDataForLogin() {
     };
   }
 
-  const shared = tryLoadSignupData();
-  if (shared?.phoneNumber) return shared;
-
   throw new Error(
     'No login phone available for user-web test.\n' +
-      'Provide LOGIN_PHONE_RAW in .env (or environment), or run signup/onboarding tests first to populate shared-state.',
+      'Run signup/onboarding tests first to populate shared-state, or provide LOGIN_PHONE_RAW in .env.',
   );
 }
 

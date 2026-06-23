@@ -284,7 +284,10 @@ function generatePayeeExtraFields(countryCode) {
         streetAddress: faker.location.streetAddress(),
         city: faker.location.city(),
         zipCode: faker.string.numeric(7),       // 7-digit Japanese postal code
-        phone: `+81 90 ${faker.string.numeric(4)} ${faker.string.numeric(4)}`, // Japanese mobile: +81 90-XXXX-XXXX
+        // Japanese mobile: +81 90-XXXX-XXXX. The first group must not lead with 0 or the
+        // FE's phone validator rejects it ("Invalid phone number for JP"), which left
+        // Continue disabled and flaked the JP scenarios — pin a non-zero leading digit.
+        phone: `+81 90 ${faker.string.numeric({ length: 4, allowLeadingZeros: false })} ${faker.string.numeric(4)}`,
       };
     default:
       return null;
@@ -323,7 +326,8 @@ function generateBusinessPayeeExtraFields(countryCode) {
         ...base,
         zipCode: faker.string.numeric(7),
         // Same full-international format as individual JP
-        phone: `+81 90 ${faker.string.numeric(4)} ${faker.string.numeric(4)}`,
+        // First group must not lead with 0 — see note in generatePayeeExtraFields('JP').
+        phone: `+81 90 ${faker.string.numeric({ length: 4, allowLeadingZeros: false })} ${faker.string.numeric(4)}`,
       };
     case 'CN':
       return { ...base, zipCode: faker.string.numeric(6) };

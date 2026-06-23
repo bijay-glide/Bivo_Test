@@ -98,8 +98,11 @@ const COUNTRY_BANKING_CONFIGS = {
     currencyId: null, // TODO: populate from GET /beneficiary/currencies
     currencyCode: 'CNY',
     country: 'CN',
-    channel: 'alipay',         // individual: "Deliver to Alipay" — mobile + wallet + SWIFT + bank name
-    businessChannel: 'nz_bank', // business:    "Deliver to Bank Deposit" — account + SWIFT + bank name
+    // This build's CN "Account Details" banking screen renders no input fields for either
+    // payee type — the (already-enabled) Continue alone creates the beneficiary account
+    // (POST /beneficiary/account → 202 ACTIVE). Verified June 2026.
+    channel: 'no_fields',
+    businessChannel: 'no_fields',
     bankingDetails: {
       phone: '13812345678',        // 11 digits, no prefix — system adds +86
       walletProvider: 'Alipay',
