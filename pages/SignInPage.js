@@ -38,7 +38,16 @@ class SignInPage {
   }
 
   async selectPersonalTab() {
-    //await this.personalTab.click();
+    // This is the first action after goto() — the React app may not have rendered yet.
+    // Wait for the Personal tab to appear, and only click it when it's actually visible.
+    // .first() avoids a strict-mode violation if more than one "Personal" node renders.
+    await this.personalTab
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
+      .catch(() => {});
+    if (await this.personalTab.first().isVisible().catch(() => false)) {
+      await this.personalTab.first().click();
+    }
   }
 
   async clickUsePhone() {

@@ -153,6 +153,7 @@ class WirePaymentPage {
 
     await this.page.getByText('Now').click();
     await this.page.getByRole('button', { name: 'Continue' }).click();
+    await this.page.getByRole('button', { name: 'Transfer' }).click();
     await this.page.waitForURL('**/money-transfer/payee-internal-review')
   }
 
@@ -204,9 +205,15 @@ class WirePaymentPage {
       { timeout: 60000 },
     );
 
+    // By this point the wire is already submitted: the schedule step completes the payment
+    // ("Payment successful") and the app redirects to the dashboard. The transactions-list
+    // API fires when opening "View Transactions", so capture it on that click.
+    const viewTransactionsLink = this.page.getByRole('link', { name: 'View Transactions' }).first();
+    await viewTransactionsLink.waitFor({ state: 'visible', timeout: 30000 });
+
     const [response] = await Promise.all([
       waitForTransactions,
-      this.page.getByRole('button', { name: 'Transfer' }).click(),
+      viewTransactionsLink.click(),
     ]);
     const body = await response.json();
     const responseUrl = response.url();
@@ -248,7 +255,12 @@ class WirePaymentPage {
    * @param {string} amount  - e.g. '$90.00'
    */
   async verifyTransactionHistory(firstName, amount, { transactionType = 'Debit' } = {}) {
-    await this.page.getByRole('link', { name: 'View Transactions' }).click();
+    // submitTransfer already opens "View Transactions" to capture the list API, so the link
+    // may no longer be present (we're on the list). Click it only if it's still available.
+    const viewTransactionsLink = this.page.getByRole('link', { name: 'View Transactions' }).first();
+    if (await viewTransactionsLink.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await viewTransactionsLink.click();
+    }
 
     await expect(this.page.locator('tbody')).toContainText(`- ${amount}`);
     await expect(this.page.locator('tbody')).toContainText(`Withdraw fund to ${firstName}`);
