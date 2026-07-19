@@ -277,20 +277,19 @@ class FxTransactionPage {
   async clearSendAmount() {
     await this.sendAmountInput.click();
     await this.sendAmountInput.press('End');
-    for (let i = 0; i < 20; i++) {
-      const digits = (await this.sendAmountInput.inputValue().catch(() => '')).replace(/\D/g, '');
-      if (!digits || Number(digits) === 0) break;
+    const digitCount = (await this.sendAmountInput.inputValue().catch(() => '')).replace(/\D/g, '').length;
+    for (let i = 0; i < digitCount; i++) {
       await this.page.keyboard.press('Backspace');
-      await this.page.waitForTimeout(30);
     }
   }
 
-  // Click, clear, keyboard.type — robust against React re-renders that can
-  // truncate pressSequentially mid-type when exchange-rate APIs respond slowly.
+  // Click, keyboard.type — robust against React re-renders that can truncate
+  // pressSequentially mid-type when exchange-rate APIs respond slowly. The field
+  // defaults to $0.00 on a fresh Send Money screen, so no clear is needed first.
   async enterSendAmountWithData(data) {
     await expect(this.sendAmountInput).toBeVisible({ timeout: 20000 });
     await expect(this.sendAmountInput).toBeEditable();
-    await this.clearSendAmount();
+    await this.sendAmountInput.click();
     await this.page.keyboard.type(data.amountInput);
   }
 
@@ -304,25 +303,18 @@ class FxTransactionPage {
    * @param {{ amountInput: string }} data
    * @param {number} [maxAttempts=3]
    */
-  async enterSendAmountForBusiness(data, maxAttempts = 3) {
+  async enterSendAmountForBusiness(data) {
     await expect(this.sendAmountInput).toBeVisible({ timeout: 20000 });
     await expect(this.sendAmountInput).toBeEditable();
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // Clear first — selectText() does not replace this masked field, so a retry
-      // would otherwise append to the previous attempt's digits and balloon the amount.
-      await this.clearSendAmount();
-      // keyboard.type dispatches at page level — survives React element replacement
-      await this.page.keyboard.type(data.amountInput);
-      // Allow React to process all onChange events
-      await this.page.waitForTimeout(400);
+    await this.sendAmountInput.click();
+    await this.page.keyboard.type(data.amountInput);
+    await this.page.waitForTimeout(400);
       const continueEnabled = await this.page
         .getByRole('button', { name: 'Continue' })
         .isEnabled({ timeout: 2000 })
         .catch(() => false);
       if (continueEnabled) return;
-      if (attempt < maxAttempts) await this.page.waitForTimeout(600);
-    }
+
   }
 
   // amountUsd e.g. "62.30"; encodes to cents like US ACH flow.
@@ -502,8 +494,14 @@ class FxTransactionPage {
    */
   async addPayeeAutoByTestId({ firstName, lastName, addressOne, city, state, postalCode }) {
     await this.page.getByRole('button', { name: 'Add Payee' }).click();
-    const first = this.page.getByTestId('addpayeedetails-first-name-input');
-    const last = this.page.getByTestId('addpayeedetails-last-name-input');
+    // Fall back to the placeholder-based locator when the testid isn't rendered
+    // (the FE has been observed to drop addpayeedetails-* testids from this form).
+    const first = this.page
+      .getByTestId('addpayeedetails-first-name-input')
+      .or(this.page.getByPlaceholder("Enter beneficiary's first name"));
+    const last = this.page
+      .getByTestId('addpayeedetails-last-name-input')
+      .or(this.page.getByPlaceholder("Enter beneficiary's last name"));
     await first.waitFor({ state: 'visible', timeout: 15000 });
     for (let i = 0; i < 3; i++) {
       await first.fill(firstName);
@@ -512,16 +510,33 @@ class FxTransactionPage {
       if ((await first.inputValue()) === firstName && (await last.inputValue()) === lastName) break;
     }
 
-    const address = this.page.getByTestId('addpayeedetails-address-one-input');
+    const address = this.page
+      .getByTestId('addpayeedetails-address-one-input')
+      .or(this.fieldByLabel(/Address/i));
     const isExtended = await address.isVisible({ timeout: 2500 }).catch(() => false);
     if (isExtended) {
       await address.fill(addressOne);
-      await this.page.getByTestId('addpayeedetails-city-input').fill(city);
-      await this.page.getByTestId('addpayeedetails-state-input').fill(state);
-      await this.page.getByTestId('addpayeedetails-postal-code-input').fill(postalCode);
+      await this.page.getByTestId('addpayeedetails-city-input').or(this.fieldByLabel(/City/i)).fill(city);
+      await this.page.getByTestId('addpayeedetails-state-input').or(this.fieldByLabel(/State/i)).fill(state);
+      await this.page
+        .getByTestId('addpayeedetails-postal-code-input')
+        .or(this.fieldByLabel(/Zip|Postal/i))
+        .fill(postalCode);
     }
     await this.continue();
     return isExtended ? 'extended' : 'name-only';
+  }
+
+  /**
+   * Falls back to the field's visible label when the FE drops its data-testid — every
+   * add-beneficiary field renders as `.add-beneficiary-input.form-group` wrapping a
+   * `.add-beneficiary-label` + `input`, so label text stays a stable target either way.
+   */
+  fieldByLabel(labelPattern) {
+    return this.page
+      .locator('.add-beneficiary-input.form-group')
+      .filter({ has: this.page.locator('.add-beneficiary-label', { hasText: labelPattern }) })
+      .locator('input');
   }
 
   /**
@@ -530,25 +545,44 @@ class FxTransactionPage {
    * @param {{ channel: string, currency: string, data: object }} params
    */
   async fillFxBankingByTestId({ channel, currency, data }) {
-    const account = this.page.getByTestId('addpayeeaddress-bank-account-number-input');
-    const byId = (id) => this.page.getByTestId(`addpayeeaddress-${id}`);
+    const account = this.page
+      .getByTestId('addpayeeaddress-bank-account-number-input')
+      .or(this.fieldByLabel(/IBAN|Account Number/i));
+    const byId = (id, labelPattern) =>
+      this.page.getByTestId(`addpayeeaddress-${id}`).or(this.fieldByLabel(labelPattern));
 
     if (channel === 'IBAN powered by Visa Direct') {
       await account.fill(data.iban);
     } else if (channel === 'IBAN') {
       await account.fill(data.iban);
-      await byId('swift-code-input').fill(data.swiftCode);
+      // Anchored at the start — "Intermediary Bank SWIFT Code (optional)" also contains
+      // "SWIFT" and would otherwise match too, causing a strict-mode violation.
+      await byId('swift-code-input', /^SWIFT/i).fill(data.swiftCode);
     } else if (channel === 'Bank Deposit' && currency === 'GBP') {
       await account.fill(data.accountNumber);
-      await byId('bank-code-input').fill(data.sortCode); // "Enter sort code"
-    } else if (channel === 'Bank Deposit' || channel === 'Domestic Payment') {
+      await byId('bank-code-input', /Sort Code/i).fill(data.sortCode); // "Enter sort code"
+    } else if (channel === 'Bank Deposit' || channel === 'Domestic Payment' || channel === 'Bank Deposit - ACH') {
       await account.fill(data.accountNumber);
-      await byId('routing-code-input').fill(data.routingNumber);
+      await byId('routing-code-input', /Routing/i).fill(data.routingNumber);
     } else if (channel === 'SWIFT Payment') {
       await account.fill(data.accountNumber);
-      await byId('bank-name-input').fill(data.bankName);
-      await byId('swift-code-input').fill(data.swiftCode);
-      await byId('bank-code-input').fill(data.intermediarySwift); // intermediary SWIFT (optional)
+      await byId('bank-name-input', /Bank Name/i).fill(data.bankName);
+      // Anchored at the start — "Intermediary Bank SWIFT Code (optional)" also contains
+      // "SWIFT" and would otherwise match too, causing a strict-mode violation.
+      await byId('swift-code-input', /^SWIFT/i).fill(data.swiftCode);
+      await byId('bank-code-input', /Intermediary/i).fill(data.intermediarySwift); // intermediary SWIFT (optional)
+    } else if (channel === 'Wire - SWIFT') {
+      // Same shape as SWIFT Payment plus a Bank Country Code field (this corridor's form
+      // only renders label text, no addpayeeaddress-* testids — probed July 2026).
+      await account.fill(data.accountNumber);
+      await byId('bank-name-input', /Bank Name/i).fill(data.bankName);
+      // Anchored at the start — "Intermediary Bank SWIFT Code (optional)" also contains
+      // "SWIFT" and would otherwise match too, causing a strict-mode violation.
+      await byId('swift-code-input', /^SWIFT/i).fill(data.swiftCode);
+      if (data.intermediarySwift) {
+        await byId('bank-code-input', /Intermediary/i).fill(data.intermediarySwift);
+      }
+      await byId('country-code-input', /Bank Country Code/i).fill(data.bankCountryCode);
     } else if (channel === 'Wire SWIFT') {
       await account.fill(data.accountNumber);
     } else {
@@ -619,6 +653,252 @@ class FxTransactionPage {
     await expect(root).toContainText('Fees');
     await expect(root).toContainText('Total amount in USD');
     await expect(root).toContainText(`${firstName} ${lastName}`);
+  }
+
+  /**
+   * Selects a previously-saved payee from the Select Payee screen instead of adding a new
+   * one. Existing payee rows render as div.d-flex.flex-column.pl-12 with no data-testid
+   * (probed July 2026 via exploratory tests L/N/P).
+   *
+   * Normally this skips personal-info and banking-details entirely, landing straight on
+   * Review Transfer. EXCEPTION: if the transaction's delivery channel is one this payee
+   * has no saved banking details for yet (e.g. switching from "IBAN powered by Visa
+   * Direct" to "Bank Deposit"), the app shows "Edit Beneficiary Details" instead — pass
+   * expectReviewTransfer: false in that case and assert/handle that screen separately
+   * (see fillEditBeneficiaryBankDepositDetailsAndCaptureApi).
+   *
+   * @param {string} firstName
+   * @param {string} lastName
+   * @param {{ expectReviewTransfer?: boolean }} [options]
+   */
+  async selectExistingPayeeByName(firstName, lastName, { expectReviewTransfer = true } = {}) {
+    const payeeRow = this.page
+      .locator('div.d-flex.flex-column.pl-12')
+      .filter({ hasText: `${firstName} ${lastName}` })
+      .first();
+
+    // The Select Payee list only loads 10 payees at a time and lazy-loads more as the
+    // page is scrolled (confirmed via network capture: scrolling fires GET
+    // /remittance/v1/beneficiary/accounts?page=1... etc). Keep scrolling until the
+    // target payee appears or the row count stops growing (no more pages left).
+    const allRows = this.page.locator('div.d-flex.flex-column.pl-12');
+    let previousCount = -1;
+    for (let i = 0; i < 10; i++) {
+      if (await payeeRow.isVisible()) break;
+      const currentCount = await allRows.count();
+      if (currentCount === previousCount) break;
+      previousCount = currentCount;
+      await this.page.mouse.wheel(0, 2000);
+      await this.page.waitForTimeout(800);
+    }
+
+    await expect(
+      payeeRow,
+      `saved payee "${firstName} ${lastName}" should be visible on Select Payee screen`,
+    ).toBeVisible({ timeout: 15000 });
+    await payeeRow.click();
+    if (expectReviewTransfer) {
+      await expect(this.page.getByRole('heading', { name: 'Review Transfer' })).toBeVisible({ timeout: 15000 });
+    }
+  }
+
+  /**
+   * Handles the "Edit Beneficiary Details" screen — shown when sending to an existing
+   * payee via a delivery channel it has no saved banking details for yet. Clicks Next to
+   * reach the banking form, fills the GBP Bank Deposit fields (account number + sort
+   * code), and captures the account-creation API for this new channel (same
+   * /beneficiary/account POST used when a channel's banking details are added the first
+   * time — see AddPayeePage.fillBankingDetailsByChannelAndCaptureApi).
+   *
+   * @param {{ accountNumber: string, sortCode: string }} params
+   */
+  async fillEditBeneficiaryBankDepositDetailsAndCaptureApi({ accountNumber, sortCode }) {
+    await this.page.getByRole('button', { name: 'Next' }).click();
+
+    const accountPromise = this.page.waitForResponse(
+      (r) => r.url().includes('/beneficiary/account') && r.request().method() === 'POST' && r.ok(),
+      { timeout: 20000 },
+    );
+    await this.page.getByRole('textbox', { name: 'Enter account number' }).fill(accountNumber);
+    await this.page.getByRole('textbox', { name: 'Enter sort code' }).fill(sortCode);
+    await this.continue();
+
+    const acctResponse = await accountPromise;
+    return { acctResponse };
+  }
+
+  /**
+   * Opens the read-only details view for a saved payee from the Select Payee screen
+   * (the "eye"-style icon next to each row). testid is `payee-view-details-btn-{firstName}
+   * {lastName}` — space-separated, exact current display name (confirmed via recorded
+   * codegen, July 2026).
+   *
+   * @param {string} firstName
+   * @param {string} lastName
+   */
+  async viewExistingPayeeDetails(firstName, lastName) {
+    const viewBtn = this.page.getByTestId(`payee-view-details-btn-${firstName} ${lastName}`);
+    await expect(
+      viewBtn,
+      `"view details" button for saved payee "${firstName} ${lastName}" should be visible`,
+    ).toBeVisible({ timeout: 15000 });
+    await viewBtn.click();
+  }
+
+  /**
+   * Clears a text input before filling it. Plain `.fill()` alone was observed (via
+   * recorded codegen) to leave stale characters behind on this form — the same kind of
+   * controlled-input quirk as the masked send-amount field (see clearSendAmount) — so
+   * select-all + backspace first.
+   */
+  async _clearAndFill(locator, value) {
+    await locator.click();
+    await locator.press('Control+A');
+    await locator.press('Backspace');
+    await locator.fill(value);
+  }
+
+  async _safeJson(response) {
+    try {
+      return await response.json();
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Edit Payee — step 1 of 2: updates the beneficiary's first/last name from the payee
+   * details view (opened via viewExistingPayeeDetails) and captures the update API.
+   *
+   * The exact verb/path haven't been confirmed by a live probe — the admin beneficiary
+   * API (tests/api/06-beneficiary-management.spec.js) updates personal info via PUT, but
+   * this app's write calls elsewhere are all POST, so the matcher below accepts any
+   * non-GET response touching "personal-info" rather than assuming a specific verb.
+   *
+   * @param {{ firstName: string, lastName: string }} params
+   */
+  async editPayeeNameAndCaptureApi({ firstName, lastName }) {
+    await this.page.getByRole('button', { name: 'Edit Payee' }).click();
+
+    const firstNameInput = this.page.getByRole('textbox', { name: "Enter beneficiary's first name" });
+    const lastNameInput = this.page.getByRole('textbox', { name: "Enter beneficiary's last name" });
+    await this._clearAndFill(firstNameInput, firstName);
+    await this._clearAndFill(lastNameInput, lastName);
+
+    const updatePromise = this.page.waitForResponse(
+      (r) => r.url().includes('personal-info') && r.request().method() !== 'GET',
+      { timeout: 20000 },
+    );
+    await this.page.getByRole('button', { name: 'Save' }).click();
+
+    const updateResponse = await updatePromise;
+    console.log(
+      `[EditPayee] personal-info update: ${updateResponse.request().method()} ${updateResponse.url()} -> ${updateResponse.status()}`,
+    );
+    expect(updateResponse.ok(), 'personal-info update request should succeed').toBeTruthy();
+
+    let requestBody = {};
+    try {
+      requestBody = updateResponse.request().postDataJSON() || {};
+    } catch {
+      requestBody = {};
+    }
+    expect(getFieldValueFromData(requestBody, 'first_name'), 'updated personal-info first_name').toBe(firstName);
+    expect(getFieldValueFromData(requestBody, 'last_name'), 'updated personal-info last_name').toBe(lastName);
+
+    return { updateResponse, requestBody };
+  }
+
+  /**
+   * Edit Payee — step 2 of 2: updates the IBAN on the banking screen the app advances to
+   * right after editPayeeNameAndCaptureApi's Save, and captures the account-update API.
+   * Same verb caveat as editPayeeNameAndCaptureApi — matches any non-GET response
+   * touching "beneficiary/account".
+   *
+   * @param {{ iban: string }} params
+   */
+  async editPayeeIbanAndCaptureApi({ iban }) {
+    const ibanInput = this.page.getByRole('textbox', { name: 'Enter IBAN number' });
+    await this._clearAndFill(ibanInput, iban);
+
+    const updatePromise = this.page.waitForResponse(
+      (r) => r.url().includes('beneficiary/account') && r.request().method() !== 'GET',
+      { timeout: 20000 },
+    );
+    await this.page.getByRole('button', { name: 'Save' }).click();
+
+    const updateResponse = await updatePromise;
+    console.log(
+      `[EditPayee] account update: ${updateResponse.request().method()} ${updateResponse.url()} -> ${updateResponse.status()}`,
+    );
+    expect(updateResponse.ok(), 'beneficiary/account update request should succeed').toBeTruthy();
+
+    return { updateResponse };
+  }
+
+  /**
+   * Proves an IBAN edit actually persisted server-side, rather than just trusting that
+   * the update request returned 200. The confirm-transaction payment API can't be used
+   * for this: its `beneficiaryAccount` field is the internal Bivo account reference (e.g.
+   * "5000000024462"), not the raw IBAN, so it stays identical whether the edit persisted
+   * or not — asserting on it would be a false-positive check.
+   *
+   * Instead this re-enters the GB Create FX flow up to the Select Payee screen and
+   * captures GET /remittance/v1/beneficiary/accounts — the same list endpoint confirmed
+   * via a captured HAR (see this file's header comment history) to back that screen,
+   * filtered by currency_id/country — then asserts the named payee's bankAccountNumber
+   * matches the new IBAN.
+   *
+   * @param {{ firstName: string, lastName: string, iban: string, amountInput: string }} params
+   */
+  async verifyPayeeIbanPersisted({ firstName, lastName, iban, amountInput }) {
+    const listPromise = this.page.waitForResponse(
+      (r) => r.url().includes('/remittance/v1/beneficiary/accounts') && r.request().method() === 'GET' && r.ok(),
+      { timeout: 20000 },
+    );
+
+    await this.navigateToCreateFxTransactionUserWeb();
+    await this.selectDestinationCountryByTestId('GB');
+    await this.userWebFocusYouSendSection();
+    await this.enterSendAmountForBusiness({ amountInput });
+    await this.continue();
+
+    let listResponse = await listPromise;
+    let listBody = await this._safeJson(listResponse);
+    let beneficiaries = Array.isArray(listBody.beneficiaries) ? listBody.beneficiaries : [];
+    let matchingBeneficiary = beneficiaries.find((b) => b.firstName === firstName && b.lastName === lastName);
+
+    // The Select Payee list paginates 10 at a time (see selectExistingPayeeByName) — a
+    // recently edited payee may be beyond the first page. Keep scrolling to trigger
+    // subsequent pages until it's found or the API reports there's nothing more to load.
+    for (let i = 0; !matchingBeneficiary && listBody.hasNextPage && i < 10; i++) {
+      const nextPagePromise = this.page
+        .waitForResponse(
+          (r) => r.url().includes('/remittance/v1/beneficiary/accounts') && r.request().method() === 'GET' && r.ok(),
+          { timeout: 10000 },
+        )
+        .catch(() => null);
+      await this.page.mouse.wheel(0, 2000);
+      const nextResponse = await nextPagePromise;
+      if (!nextResponse) break;
+
+      listResponse = nextResponse;
+      listBody = await this._safeJson(listResponse);
+      beneficiaries = Array.isArray(listBody.beneficiaries) ? listBody.beneficiaries : [];
+      matchingBeneficiary = beneficiaries.find((b) => b.firstName === firstName && b.lastName === lastName);
+    }
+
+    expect(matchingBeneficiary, `beneficiary list should include "${firstName} ${lastName}"`).toBeTruthy();
+
+    const beneficiaryAccounts = Array.isArray(matchingBeneficiary?.beneficiaryAccounts)
+      ? matchingBeneficiary.beneficiaryAccounts
+      : [];
+    const matchingIbanAccount = beneficiaryAccounts.find(
+      (acct) => String(acct?.bankAccountNumber || '').toUpperCase() === String(iban).toUpperCase(),
+    );
+    expect(matchingIbanAccount, `beneficiary accounts should reflect the updated IBAN "${iban}"`).toBeTruthy();
+
+    return { listResponse, matchingBeneficiary };
   }
 
   // ─── Step 3 | IBAN ─────────────────────────────────────────────────────────
@@ -710,6 +990,28 @@ class FxTransactionPage {
   }
 
   /**
+   * Fills the CN Business banking form — account number, SWIFT code, bank name.
+   * Unlike the individual CN flow (Alipay), the business flow renders a standard
+   * bank-deposit form. testids confirmed via live probe, July 2026.
+   * @param {{ accountNumber: string, swiftCode: string, bankName: string }} data
+   */
+  async enterCnBusinessBankDetails({ accountNumber, swiftCode, bankName }) {
+    await this.page
+      .getByTestId('addpayeeaddress-bank-account-number-input')
+      .or(this.fieldByLabel(/Account Number/i))
+      .fill(accountNumber);
+    await this.page
+      .getByTestId('addpayeeaddress-swift-code-input')
+      .or(this.fieldByLabel(/SWIFT/i))
+      .fill(swiftCode);
+    await this.page
+      .getByTestId('addpayeeaddress-bank-name-input')
+      .or(this.fieldByLabel(/Bank Name/i))
+      .fill(bankName);
+    await this.continue();
+  }
+
+  /**
    * Fills the NZ Bank Deposit form (New Zealand).
    * Fields: account number, bank name, optional SWIFT code.
    */
@@ -751,9 +1053,11 @@ class FxTransactionPage {
       await this.enterBcrPayDetails(bankingDetails);
     } else if (channel === 'nz_bank') {
       await this.enterNzBankDetails(bankingDetails);
+    } else if (channel === 'cn_business_bank') {
+      await this.enterCnBusinessBankDetails(bankingDetails);
     } else if (channel === 'no_fields') {
-      // Some destinations (e.g. CN in this build) render a banking form with no inputs —
-      // the enabled Continue alone creates the beneficiary account.
+      // Some destinations render a banking form with no inputs — the enabled
+      // Continue alone creates the beneficiary account.
       await this.continue();
     } else {
       throw new Error(`enterBankingDetailsByChannel: unsupported channel "${channel}"`);

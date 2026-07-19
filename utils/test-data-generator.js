@@ -353,9 +353,12 @@ function generateBusinessPayeeExtraFields(countryCode) {
  * @returns {object} FX transaction data
  */
 function generateFxTransactionData(options = {}) {
+  // Strip hyphens, accents, apostrophes — payee name fields accept English letters only.
+  const sanitizeName = (n) => n.normalize('NFD').replace(/[^a-zA-Z ]/g, '').trim() || 'Test';
   const firstName =
-    options.firstName || options.beneficiaryFirstName || faker.person.firstName();
-  const lastName = options.lastName || options.beneficiaryLastName || faker.person.lastName();
+    options.firstName || options.beneficiaryFirstName || sanitizeName(faker.person.firstName());
+  const lastName =
+    options.lastName || options.beneficiaryLastName || sanitizeName(faker.person.lastName());
 
   let amountUsd = null;
   if (options.amountUsd != null && options.amountUsd !== '') {
@@ -396,15 +399,15 @@ function generateFxTransactionData(options = {}) {
 const BIVO_NUMERIC_PREFIX = '98765';
 
 /**
- * Generates a random SWIFT / BIC-shaped code of the given length.
- * First 5 digits are always BIVO_NUMERIC_PREFIX so runs are identifiable.
- * Supports 8-digit and 11-digit lengths.
- *
- * @param {8|11} length
- * @returns {string}
+ * Generates a random 8-char all-uppercase-letter SWIFT / BIC code:
+ *   BIVO (bank) + 4 random uppercase letters
+ * All-letter format satisfies both lenient ("8-11 chars") and strict
+ * ("letters only") SWIFT validators across all tested countries (JP, HK, CN).
  */
-function generateSwiftCode(length = 8) {
-  return BIVO_NUMERIC_PREFIX + generateRandomDigits(length - BIVO_NUMERIC_PREFIX.length);
+function generateSwiftCode() {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const pick = () => alpha[Math.floor(Math.random() * alpha.length)];
+  return 'BIVO' + pick() + pick() + pick() + pick();
 }
 
 /**
@@ -467,8 +470,8 @@ function generateBankingDetails(countryCode) {
     case 'JP':
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
-        swiftCode:     generateSwiftCode(8),
-        bankCode:      generateRandomDigits(3),                          // 3 digits (too short for prefix)
+        swiftCode:     generateSwiftCode(),
+        bankCode:      generateRandomDigits(4),                          // 4 digits required by form
         branchCode:    generateRandomDigits(3),                          // 3 digits
         accountType:   'Savings',
       };
@@ -477,9 +480,9 @@ function generateBankingDetails(countryCode) {
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
         bankName:      generateBivoBankName(),
-        bankCode:      generateRandomDigits(3),                          // 3 digits
+        bankCode:      generateRandomDigits(3),                          // 3 digits (HK clearing codes)
         branchCode:    generateRandomDigits(3),                          // 3 digits
-        swiftCode:     generateSwiftCode(8),
+        swiftCode:     generateSwiftCode(),
       };
 
     case 'MX':
@@ -492,7 +495,7 @@ function generateBankingDetails(countryCode) {
         // 11 digits, no country-code prefix — system already prepends +86.
         phone:          generateChinesePhoneNumber(),
         walletProvider: 'Alipay',
-        swiftCode:      generateSwiftCode(8),
+        swiftCode:      generateSwiftCode(),
         bankName:       generateBivoBankName(),
       };
 
@@ -500,7 +503,7 @@ function generateBankingDetails(countryCode) {
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
         bankName:      generateBivoBankName(),
-        swiftCode:     generateSwiftCode(8),
+        swiftCode:     generateSwiftCode(),
       };
 
     default:
@@ -514,7 +517,8 @@ function generateBankingDetails(countryCode) {
  * For most countries the business banking form matches the individual form
  * and this delegates to generateBankingDetails(). For CN, the individual flow
  * uses Alipay but the business form shows a standard bank-deposit screen
- * (account number + SWIFT + bank name), so it returns the NZ-style shape.
+ * (account number + SWIFT + bank name). For NZ, a real bank (Westpac New
+ * Zealand / WPACNZ2W) is used instead of the randomly generated one.
  *
  * @param {string} countryCode
  * @returns {object}
@@ -525,6 +529,13 @@ function generateBankingDetailsForBusiness(countryCode) {
       accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),
       swiftCode:     generateSwiftCode(8),
       bankName:      generateBivoBankName(),
+    };
+  }
+  if (countryCode === 'NZ') {
+    return {
+      accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
+      bankName:      'Westpac New Zealand',
+      swiftCode:     'WPACNZ2W',
     };
   }
   return generateBankingDetails(countryCode);
