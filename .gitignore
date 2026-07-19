@@ -56,3 +56,4 @@ plane
 
 # Draft / in-progress specs (local only, not for CI)
 tests/ui/user-web/drafts/
+tests/ui/bu-web/drafts/

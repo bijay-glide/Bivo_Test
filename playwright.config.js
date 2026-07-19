@@ -26,20 +26,20 @@ const userWebFxMultiCountryFiles = [
   'ui/user-web/5.3 ui_userweb_uk_fx.spec.js',
 ];
 
-const buWebOnboardingFiles = ['ui/bu-web/onboarding.spec.js'];
+const buWebOnboardingFiles = ['ui/bu-web/1 ui_buweb_onboarding.spec.js'];
 
 const buWebParallelFiles = [
-  'ui/bu-web/1.4*',
-  'ui/bu-web/1.5*',
-  'ui/bu-web/1.6 *',
-  'ui/bu-web/1.7*',
-  'ui/bu-web/1.8*',
-  'ui/bu-web/1.9*',
-  'ui/bu-web/1.10*',
-  'ui/bu-web/1.11*',
-  'ui/bu-web/1.12*',
-  'ui/bu-web/1.13*',
-  'ui/bu-web/1.14*',
+  'ui/bu-web/2 *',   // wire payment
+  'ui/bu-web/3 *',   // us ach
+  'ui/bu-web/4 *',   // link card
+  'ui/bu-web/5.1*',  // fx multicountry
+  'ui/bu-web/5.2*',  // fx multicountry business
+  'ui/bu-web/5.3*',  // uk fx
+  'ui/bu-web/6 *',   // move money
+  'ui/bu-web/7 *',   // add payee
+  'ui/bu-web/8 *',   // settings auth
+  'ui/bu-web/9.1*',  // add account
+  'ui/bu-web/9.2*',  // multicurrency account
 ];
 
 module.exports = defineConfig({
