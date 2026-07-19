@@ -98,11 +98,12 @@ const COUNTRY_BANKING_CONFIGS = {
     currencyId: null, // TODO: populate from GET /beneficiary/currencies
     currencyCode: 'CNY',
     country: 'CN',
-    // This build's CN "Account Details" banking screen renders no input fields for either
-    // payee type — the (already-enabled) Continue alone creates the beneficiary account
-    // (POST /beneficiary/account → 202 ACTIVE). Verified June 2026.
-    channel: 'no_fields',
-    businessChannel: 'no_fields',
+    // Individual CN uses Alipay form: phone + wallet provider + SWIFT + bank name.
+    // Business CN uses a standard bank-deposit form instead (account number + SWIFT +
+    // bank name) — changed from the earlier no-inputs behavior in a FE update, verified
+    // via live probe July 2026.
+    channel: 'alipay',
+    businessChannel: 'cn_business_bank',
     bankingDetails: {
       phone: '13812345678',        // 11 digits, no prefix — system adds +86
       walletProvider: 'Alipay',

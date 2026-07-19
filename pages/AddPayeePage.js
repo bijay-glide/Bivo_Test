@@ -132,6 +132,7 @@ class AddPayeePage {
     await this.page.getByRole('textbox', { name: 'Enter SWIFT code' }).fill(swiftCode);
     await this.page.getByRole('textbox', { name: 'Enter bank code' }).fill(bankCode);
     await this.page.getByRole('textbox', { name: 'Enter branch code' }).fill(branchCode);
+    await this.page.keyboard.press('Tab'); // blur branch code to trigger final field validation
     await this.page.getByRole('button', { name: 'Select account type' }).click();
     await this.page.getByRole('button', { name: accountType }).click();
   }
@@ -142,6 +143,7 @@ class AddPayeePage {
     await this.page.getByRole('textbox', { name: 'Enter Bank code' }).fill(bankCode);
     await this.page.getByRole('textbox', { name: 'Enter Branch code' }).fill(branchCode);
     await this.page.getByRole('textbox', { name: 'Enter SWIFT code' }).fill(swiftCode);
+    await this.page.keyboard.press('Tab'); // blur SWIFT code field to trigger form validation
   }
 
   async _fillAlipayDetails({ phone, walletProvider, swiftCode, bankName }) {
@@ -217,10 +219,50 @@ class AddPayeePage {
    */
   async verifyPayeeInList(firstName, lastName) {
     const testId = `payee-list-item-${firstName}-${lastName}`;
+    await this._scrollUntilPayeeVisible(this.page.getByTestId(testId));
     await expect(this.page.getByTestId(testId)).toContainText(
       `${firstName} ${lastName}`,
       { timeout: 20000 },
     );
+  }
+
+  /**
+   * The Payees tab list only loads 10 payees at a time and lazy-loads more as the
+   * page is scrolled (same pagination behavior as the FX flow's Select Payee screen —
+   * see FxTransactionPage.selectExistingPayeeByName). Keep scrolling until the target
+   * row appears or the row count stops growing (no more pages left).
+   */
+  async _scrollUntilPayeeVisible(targetLocator) {
+    const allRows = this.page.locator(
+      '[data-testid^="payee-list-item-"]:not([data-testid*="-view-details-button-"])',
+    );
+    let previousCount = -1;
+    for (let i = 0; i < 10; i++) {
+      if (await targetLocator.isVisible()) break;
+      const currentCount = await allRows.count();
+      if (currentCount === previousCount) break;
+      previousCount = currentCount;
+      await this.page.mouse.wheel(0, 2000);
+      await this.page.waitForTimeout(800);
+    }
+  }
+
+  /**
+   * Opens a payee's details view from the standalone Payees list (same
+   * payee-list-item-{firstName}-{lastName} testid as verifyPayeeInList).
+   *
+   * ASSUMPTION (unconfirmed by a live probe): this lands on the same shared
+   * "Payee Details" screen reached via the FX flow's view-details button — the one
+   * FxTransactionPage.editPayeeNameAndCaptureApi/editPayeeIbanAndCaptureApi already
+   * drive (Edit Payee button → name form → Save → IBAN form → Save). If the standalone
+   * entry point renders a different screen, those two methods will need adjusting.
+   */
+  async openPayeeDetails(firstName, lastName) {
+    const testId = `payee-list-item-view-details-button-${firstName}-${lastName}`;
+    const listItem = this.page.getByTestId(testId);
+    await this._scrollUntilPayeeVisible(listItem);
+    await expect(listItem, `payee list item "${testId}" should be visible`).toBeVisible({ timeout: 15000 });
+    await listItem.click();
   }
 }
 
