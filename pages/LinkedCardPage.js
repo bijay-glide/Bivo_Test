@@ -166,7 +166,11 @@ class LinkedCardPage {
     return { response, body };
   }
 
-  static assertPgwCardSuccess(body) {
+  static assertPgwCardSuccess(response, body) {
+    expect(
+      response.status(),
+      `PGW card link API should return 200, got ${response.status()}: ${JSON.stringify(body)}`,
+    ).toBe(200);
     expect(body, 'PGW response body should be JSON').toBeTruthy();
     const id = body.identifier != null ? String(body.identifier).trim() : '';
     expect(id.length, 'PGW success should include a non-empty identifier (digits/format may vary)').toBeGreaterThan(0);
