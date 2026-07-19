@@ -15,32 +15,12 @@ const bcrOnboardingFiles = [
 
 // Merged serial spec: 1.1 → 1.2 → 1.3 run in order on one worker via test.describe.configure({ mode: 'serial' }).
 // Originals backed up at tests/ui/user-web/legacy/*.spec.js.bak — restore them if you need to revert.
-const userWebOnboardingFiles = ['ui/user-web/1 ui_userweb_onboarding.spec.js'];
+const userWebOnboardingFiles = ['ui/user-web/onboarding.spec.js'];
 
-const userWebLinkCardOnlyFile = 'ui/user-web/4 ui_userweb_link_card.spec.js';
+const userWebLinkCardOnlyFile = 'ui/user-web/1.7 ui_userweb_linkcard.spec.js';
 
-/** FX suite — individual (5.1), business (5.2), and UK matrix (5.3) run together. */
-const userWebFxMultiCountryFiles = [
-  'ui/user-web/5.1 ui_userweb_fx_multicountry.spec.js',
-  'ui/user-web/5.2 ui_userweb_fx_multicountry_business.spec.js',
-  'ui/user-web/5.3 ui_userweb_uk_fx.spec.js',
-];
-
-const buWebOnboardingFiles = ['ui/bu-web/1 ui_buweb_onboarding.spec.js'];
-
-const buWebParallelFiles = [
-  'ui/bu-web/2 *',   // wire payment
-  'ui/bu-web/3 *',   // us ach
-  'ui/bu-web/4 *',   // link card
-  'ui/bu-web/5.1*',  // fx multicountry
-  'ui/bu-web/5.2*',  // fx multicountry business
-  'ui/bu-web/5.3*',  // uk fx
-  'ui/bu-web/6 *',   // move money
-  'ui/bu-web/7 *',   // add payee
-  'ui/bu-web/8 *',   // settings auth
-  'ui/bu-web/9.1*',  // add account
-  'ui/bu-web/9.2*',  // multicurrency account
-];
+/** Multi-country FX suite — each test logs in independently. */
+const userWebFxMultiCountryFile = 'ui/user-web/1.8 ui_userweb_fx_multicountry.spec.js';
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -100,13 +80,10 @@ module.exports = defineConfig({
     {
       name: 'UI user-web parallel',
       testMatch: [
-        'ui/user-web/2 *',   // wire payment
-        'ui/user-web/3 *',   // us ach
-        'ui/user-web/6 *',   // move money
-        'ui/user-web/7 *',   // add payee
-        'ui/user-web/8 *',   // settings auth
-        'ui/user-web/9.1*',  // add account
-        'ui/user-web/9.2*',  // multicurrency account
+        'ui/user-web/1.4*',
+        'ui/user-web/1.6*',
+        'ui/user-web/1.9*',
+        'ui/user-web/1.10*',
       ],
       fullyParallel: true,
       dependencies: ['UI user-web onboarding'],
@@ -121,28 +98,9 @@ module.exports = defineConfig({
     },
     {
       name: 'UI user-web FX multi-country',
-      testMatch: userWebFxMultiCountryFiles,
+      testMatch: userWebFxMultiCountryFile,
       fullyParallel: true,
       dependencies: ['UI user-web onboarding'],
-      use: { ...uiServerUse }
-    },
-    {
-      name: 'UI bu-web onboarding',
-      testMatch: buWebOnboardingFiles,
-      fullyParallel: false,
-      use: { ...uiServerUse }
-    },
-    {
-      name: 'UI bu-web parallel',
-      testMatch: buWebParallelFiles,
-      fullyParallel: true,
-      dependencies: ['UI bu-web onboarding'],
-      use: { ...uiServerUse }
-    },
-    {
-      name: 'UI user-web exploratory',
-      testMatch: 'ui/user-web/exploratory.spec.js',
-      fullyParallel: true,
       use: { ...uiServerUse }
     }
   ]
