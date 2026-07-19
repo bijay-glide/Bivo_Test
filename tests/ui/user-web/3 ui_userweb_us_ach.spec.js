@@ -12,8 +12,8 @@ const US_PAYMENT_DATA = {
   city: 'New York',
   state: 'NY',
   postalCode: '10001',
-  accountNumber: '1000098444',
-  routingNumber: '0001',
+  accountNumber: '99000000119181',
+  routingNumber: '091000019',
   amountUsd: '60.33',
   message: 'message: this is transactionn',
 };

@@ -88,7 +88,8 @@ test.describe('User-web — Auth, Dashboard & Settings', () => {
 
     await test.step('Step 4 | Add funds from Another Bank widget is rendered', async () => {
       await expect(page.getByText('Add funds from Another Bank')).toBeVisible();
-      await expect(page.getByRole('link', { name: 'Add Funds' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Add Funds', exact: true })).toBeVisible();
+      
     });
 
     await test.step('Step 5 | Send Money Abroad widget shows live exchange rate', async () => {
