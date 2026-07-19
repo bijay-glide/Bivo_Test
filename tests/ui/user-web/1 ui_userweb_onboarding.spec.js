@@ -141,25 +141,6 @@ test.describe('User-web onboarding', () => {
       await setPasswordPage.setPassword(FIRST_LOGIN_PASSWORD);
     });
 
-    await test.step('Step 5 | Verify /client/v1/profile, then welcome + account active UI', async () => {
-      const profileResponse = await userData._profileResponsePromise;
-      const profileData = await profileResponse.json();
-      expect(profileData, 'GET /client/v1/profile should include clientId').toMatchObject({
-        clientId: expect.anything(),
-      });
-      userData._profileData = profileData;
-
-      const expectedWelcome = `Dear ${userData.firstName} ${userData.lastName}, Bivo welcomes you!`;
-      await expect(page.locator('h2.title')).toHaveText(expectedWelcome, { timeout: 15000 });
-      await expect(page.getByText(/Your account is now active/)).toBeVisible({ timeout: 15000 });
-    });
-
-    await test.step('Step 6 | Persist clientId and account number', async () => {
-      const profileData = userData._profileData;
-      const accountInfoData = await (await userData._accountInfoResponsePromise).json();
-      const accountNumber = accountInfoData[0]?.accountNumber;
-      saveClientData({ clientId: profileData.clientId, accountNumber });
-    });
   });
 
   // ─── 1.3 | ACH link and fund ───────────────────────────────────────────────
@@ -204,6 +185,26 @@ test.describe('User-web onboarding', () => {
       await signInPage.verifyLoginSuccessful();
     });
 
+    await test.step('Step 5 | Verify /client/v1/profile, then welcome + account active UI', async () => {
+      const profileResponse = await userData._profileResponsePromise;
+      const profileData = await profileResponse.json();
+      expect(profileData, 'GET /client/v1/profile should include clientId').toMatchObject({
+        clientId: expect.anything(),
+      });
+      userData._profileData = profileData;
+
+      const expectedWelcome = `Dear ${userData.firstName} ${userData.lastName}, Bivo welcomes you!`;
+      await expect(page.locator('h2.title')).toHaveText(expectedWelcome, { timeout: 15000 });
+      await expect(page.getByText(/Your account is now active/)).toBeVisible({ timeout: 15000 });
+    });
+
+    await test.step('Step 6 | Persist clientId and account number', async () => {
+      const profileData = userData._profileData;
+      const accountInfoData = await (await userData._accountInfoResponsePromise).json();
+      const accountNumber = accountInfoData[0]?.accountNumber;
+      saveClientData({ clientId: profileData.clientId, accountNumber });
+    });
+    
     await test.step('Step 6 | Navigate to ACH link flow', async () => {
       await dashboardPage.goToMoveMoneyUserWeb();
       await achLinkPage.clickLinkAccountUserWeb();
