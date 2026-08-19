@@ -1,10 +1,10 @@
 process.env.BIVO_UI_STATE_SUITE = 'userweb';
 
 const { test, expect } = require('@playwright/test');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { generateFxTransactionData, generateBankingDetails } = require('../../../utils/test-data-generator');
-const AddPayeePage = require('../../../pages/AddPayeePage');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { generateFxTransactionData, generateBankingDetails } = require('../../../../utils/test-data-generator');
+const AddPayeePage = require('../../../../pages/AddPayeePage');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
 
 // Countries covered by the payee-add sidebar flow (excludes SV which is BCR-Pay only).
 const PAYEE_COUNTRIES = ['GB', 'AU', 'IN', 'JP', 'HK', 'CN', 'MX'];

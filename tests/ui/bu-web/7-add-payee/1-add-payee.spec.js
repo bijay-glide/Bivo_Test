@@ -1,10 +1,10 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { generateFxTransactionData, generateBankingDetails } = require('../../../utils/test-data-generator');
-const AddPayeePage = require('../../../pages/AddPayeePage');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { generateFxTransactionData, generateBankingDetails } = require('../../../../utils/test-data-generator');
+const AddPayeePage = require('../../../../pages/AddPayeePage');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
 
 // Countries covered by the payee-add sidebar flow.
 // Excludes SV (BCR-Pay only) and CN — on bu-web the CN (Alipay) banking-details
@@ -30,6 +30,12 @@ test.describe('Bu-web — Add Payee (multi-country)', () => {
       const txData = generateFxTransactionData({ countryCode });
       const bankingDetails = generateBankingDetails(countryCode);
 
+      // Registered before login so the listener is in place regardless of when the app first calls this endpoint.
+      const accountsListResponsePromise = page.waitForResponse(
+        res => res.url().includes('/remittance/v1/beneficiary/accounts') && res.request().method() === 'GET',
+        { timeout: 30000 },
+      ).catch(() => null);
+
       await test.step('Step 1 | Login', async () => {
         const userData = resolveBuWebUserDataForLogin();
         await loginBuWebWithEmail({ page, userData });
@@ -40,6 +46,13 @@ test.describe('Bu-web — Add Payee (multi-country)', () => {
       });
 
       await test.step(`Step 3 | Open Add Payee — select ${countryCode}`, async () => {
+        const accountsListResponse = await accountsListResponsePromise;
+        if (accountsListResponse) {
+          expect(
+            accountsListResponse.status(),
+            'GET /remittance/v1/beneficiary/accounts should return 200',
+          ).toBe(200);
+        }
         await payeePage.clickAddPayee();
         await payeePage.selectCountry(countryCode);
       });
