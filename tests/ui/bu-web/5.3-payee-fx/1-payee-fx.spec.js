@@ -1,5 +1,6 @@
-// User-web FX — saved payee lifecycle. Five independent scenarios, each creating its own
-// payee first (self-contained, no dependency on run order or sandbox data):
+// Bu-web FX — saved payee lifecycle. Ported from user-web's 5.4-payee-fx. Five
+// independent scenarios, each creating its own payee first (self-contained, no
+// dependency on run order or sandbox data):
 //   1. Reuse a saved payee for a second send.
 //   2. View + edit a saved payee (name + IBAN) from within the FX flow, then send again
 //      with the updated details.
@@ -9,22 +10,21 @@
 //      yet triggers "Edit Beneficiary Details" to collect that channel's details.
 //   5. Editing a payee from the standalone Payees tab (not from within the FX flow) is
 //      reflected in the FX transaction's Select Payee list, then sends with that payee.
-// Existing-payee UI (Select Payee row, view-details button, Edit Payee form, Edit
-// Beneficiary Details redirect) confirmed via exploratory tests L/N/P and recorded
-// codegen: tests/ui/user-web/exploratory.spec.js. Scenario 5's entry point (Payees tab
-// list item → Edit Payee) is NOT confirmed by a live probe — see openPayeeDetails in
-// AddPayeePage.js.
-process.env.BIVO_UI_STATE_SUITE = 'userweb';
+// See tests/ui/user-web/5.4-payee-fx/1-payee-fx.spec.js for the original — this file
+// swaps only the login helper and the bu-web Payees-tab navigation
+// (navigateToPayeesBuWeb instead of navigateToPayees); all FxTransactionPage /
+// AddPayeePage methods used are already shared cross-surface (proven by bu-web's own
+// 5.1/5.2/5.3/7 files).
+require('../state-suite-env');
 
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
 const { generateFxTransactionData, generateRandomDigits } = require('../../../../utils/test-data-generator');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
 const FxTransactionPage = require('../../../../pages/FxTransactionPage');
 const AddPayeePage = require('../../../../pages/AddPayeePage');
 
 // Second, distinct checksum-valid GB IBAN — used only as the "edited" value so the
-// update request body provably differs from the payee's original IBAN. Confirmed to
-// pass the app's IBAN validation via a recorded manual session (July 2026).
+// update request body provably differs from the payee's original IBAN.
 const EDITED_GB_IBAN = 'GB10000000119181999999';
 
 // Static prefix keeps generated banking fields recognisable as automated test data —
@@ -34,7 +34,7 @@ const BIVO_PREFIX = '98765';
 /** Adds a fresh GB payee via the standalone Payees page (not the FX flow), on the default
  *  IBAN channel — asserts the personal-info + account APIs. */
 async function addGbPayeeViaStandalonePage(addPayeePage, fxData) {
-  await addPayeePage.navigateToPayees();
+  await addPayeePage.navigateToPayeesBuWeb();
   await addPayeePage.clickAddPayee();
   await addPayeePage.selectCountry('GB');
 
@@ -78,16 +78,16 @@ async function createAndConfirmNewGbPayee(fxPage, fxData) {
   await fxPage.verifyProcessingOrWaysToFundAndDismiss();
 }
 
-test.describe('User-web FX — saved payee reuse and edit', () => {
-  test('Reuses a saved payee for a second FX send', async ({ page, request }) => {
+test.describe('Bu-web FX — saved payee reuse and edit', () => {
+  test('Reuses a saved payee for a second FX send', async ({ page }) => {
     test.setTimeout(180000);
 
     const fxPage = new FxTransactionPage(page);
     const fxData = generateFxTransactionData({ note: 'Sent from Bivo', countryCode: 'GB' });
 
     await test.step('Step 1 | Login', async () => {
-      const userData = resolveUserDataForLogin();
-      await loginUserWebWithPhone({ page, request, userData });
+      const userData = resolveBuWebUserDataForLogin();
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 2 | First transaction — add a new GB payee (asserts personal-info + details APIs) and confirm', async () => {
@@ -111,18 +111,18 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     });
   });
 
-  test('Views and edits a saved payee, then sends again with the updated details', async ({ page, request }) => {
+  test('Views and edits a saved payee, then sends again with the updated details', async ({ page }) => {
     test.setTimeout(180000);
 
     const fxPage = new FxTransactionPage(page);
     const fxData = generateFxTransactionData({ note: 'Sent from Bivo', countryCode: 'GB' });
-    // "X" suffix convention for an edited value — same pattern as exploratory test N.
+    // "X" suffix convention for an edited value — same pattern as user-web's 5.4.
     const updatedFirstName = `${fxData.beneficiaryFirstName}X`;
     const updatedLastName = `${fxData.beneficiaryLastName}X`;
 
     await test.step('Step 1 | Login', async () => {
-      const userData = resolveUserDataForLogin();
-      await loginUserWebWithPhone({ page, request, userData });
+      const userData = resolveBuWebUserDataForLogin();
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 2 | First transaction — add a new GB payee (asserts personal-info + details APIs) and confirm', async () => {
@@ -160,7 +160,7 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     });
   });
 
-  test('Payee added via the standalone Payees page is selectable in an FX transaction', async ({ page, request }) => {
+  test('Payee added via the standalone Payees page is selectable in an FX transaction', async ({ page }) => {
     test.setTimeout(180000);
 
     const addPayeePage = new AddPayeePage(page);
@@ -168,8 +168,8 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     const fxData = generateFxTransactionData({ note: 'Sent from Bivo', countryCode: 'GB' });
 
     await test.step('Step 1 | Login', async () => {
-      const userData = resolveUserDataForLogin();
-      await loginUserWebWithPhone({ page, request, userData });
+      const userData = resolveBuWebUserDataForLogin();
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 2 | Add a GB payee from the standalone Payees page (asserts personal-info + account APIs)', async () => {
@@ -192,7 +192,7 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     });
   });
 
-  test('Sending to an existing payee via a new delivery channel triggers Edit Beneficiary Details', async ({ page, request }) => {
+  test('Sending to an existing payee via a new delivery channel triggers Edit Beneficiary Details', async ({ page }) => {
     test.setTimeout(180000);
 
     const addPayeePage = new AddPayeePage(page);
@@ -204,8 +204,8 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     };
 
     await test.step('Step 1 | Login', async () => {
-      const userData = resolveUserDataForLogin();
-      await loginUserWebWithPhone({ page, request, userData });
+      const userData = resolveBuWebUserDataForLogin();
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 2 | Add a GB payee from the standalone Payees page (asserts personal-info + account APIs)', async () => {
@@ -239,7 +239,7 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     });
   });
 
-  test('Editing a payee from the Payees tab is reflected in the FX Select Payee list, then sends with that payee', async ({ page, request }) => {
+  test('Editing a payee from the Payees tab is reflected in the FX Select Payee list, then sends with that payee', async ({ page }) => {
     test.setTimeout(180000);
 
     const addPayeePage = new AddPayeePage(page);
@@ -251,8 +251,8 @@ test.describe('User-web FX — saved payee reuse and edit', () => {
     const updatedLastName = `${fxData.beneficiaryLastName}Y`;
 
     await test.step('Step 1 | Login', async () => {
-      const userData = resolveUserDataForLogin();
-      await loginUserWebWithPhone({ page, request, userData });
+      const userData = resolveBuWebUserDataForLogin();
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 2 | Add a GB payee from the standalone Payees page (asserts personal-info + account APIs)', async () => {
