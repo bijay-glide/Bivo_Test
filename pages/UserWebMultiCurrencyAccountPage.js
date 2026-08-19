@@ -5,7 +5,7 @@ const { expect } = require('@playwright/test');
  *
  * Covers the user-web "Add a New Account" multicurrency modal. The modal markup
  * is shared with bu-web (same `addcurrencymodal-*` testids), but on user-web it
- * is reached from the Accounts section (Sidebar-nav-accounts →
+ * is reached from the Accounts section (sidebar-accounts-menuitem →
  * multicurrency-add-account-button) and the create endpoints are the individual
  * ones rather than the business ones:
  *   - Fiat Currency (Fiat tab)   → POST /clientaccount/v1/spending-account/wallet-account
@@ -18,7 +18,7 @@ class UserWebMultiCurrencyAccountPage {
   constructor(page) {
     this.page = page;
 
-    this.accountsNav      = page.getByTestId('Sidebar-nav-accounts');
+    this.accountsNav      = page.getByTestId('sidebar-accounts-menuitem');
     this.addAccountButton = page.getByTestId('multicurrency-add-account-button');
     this.modal            = page.getByTestId('addcurrencymodal');
     this.fiatTab          = page.getByTestId('addcurrencymodal-fiat-tab');

@@ -21,8 +21,8 @@ class UserWebAddAccountPage {
     this.page = page;
 
     // Sidebar — Accounts section exposes the "Add Account" link.
-    this.accountsNav    = page.getByTestId('Sidebar-nav-accounts');
-    this.addAccountLink = page.getByTestId('Sidebar-accounts-addAccount');
+    this.accountsNav    = page.getByTestId('sidebar-accounts-menuitem');
+    this.addAccountLink = page.getByTestId('sidebar-add-account-menuitem');
     // Always present once the Accounts section has rendered — used as a load marker.
     this.accountsLoadedMarker = page.getByTestId('multicurrency-add-account-button');
 
@@ -101,12 +101,21 @@ class UserWebAddAccountPage {
 
   /**
    * Verify the newly created account is listed in the Accounts section.
+   *
+   * Same sidebar instability documented in openAddAccountModal(): submitting
+   * the modal can collapse the Accounts nav again, unmounting the list before
+   * this check runs. Re-expand once before asserting instead of relying on a
+   * single blind wait.
    * @param {string} name
    */
   async verifyAccountInList(name) {
-    await expect(
-      this.page.getByText(name, { exact: false }).first(),
-    ).toBeVisible({ timeout: 15000 });
+    const accountText = this.page.getByText(name, { exact: false }).first();
+
+    if (!(await accountText.isVisible({ timeout: 5000 }).catch(() => false))) {
+      await this.accountsNav.click();
+    }
+
+    await expect(accountText).toBeVisible({ timeout: 15000 });
   }
 }
 

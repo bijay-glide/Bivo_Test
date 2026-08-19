@@ -19,7 +19,7 @@ const COUNTRY_BANKING_CONFIGS = {
     country: 'GB',
     channel: 'iban',
     bankingDetails: {
-      iban: 'GB26542316456541232134',
+      iban: 'GB29NWBK60161331926819', // NatWest — real, mod-97 checksum-valid
     },
   },
 
@@ -29,9 +29,9 @@ const COUNTRY_BANKING_CONFIGS = {
     country: 'AU',
     channel: 'bsb',
     bankingDetails: {
-      bankName: 'Bank of Australia',
+      bankName: 'Commonwealth Bank of Australia',
       accountNumber: '123412346667',
-      bsbCode: '123111',
+      bsbCode: '063019', // real Melbourne branch BSB
     },
   },
 
@@ -63,9 +63,9 @@ const COUNTRY_BANKING_CONFIGS = {
     channel: 'swift', // "Deliver to Bank Deposit" — account + SWIFT + bank code + branch code + account type
     bankingDetails: {
       accountNumber: '12341234',
-      swiftCode: '12343321',
-      bankCode: '111',
-      branchCode: '664',
+      swiftCode: 'BOTKJPJT', // MUFG Bank — real SWIFT
+      bankCode: '0005',      // real Zengin bank code
+      branchCode: '001',     // real head-office branch code
       accountType: 'Savings',
     },
   },
@@ -77,10 +77,10 @@ const COUNTRY_BANKING_CONFIGS = {
     channel: 'hk_bank', // "Deliver to Bank Deposit" — account + bank name + Bank code + Branch code + SWIFT
     bankingDetails: {
       accountNumber: '12341211',
-      bankName: 'Bank of hongkong',
-      bankCode: '222',
-      branchCode: '111',
-      swiftCode: '21341234',
+      bankName: 'HSBC',
+      bankCode: '004',        // real HK clearing bank code
+      branchCode: '770',      // real Central branch code
+      swiftCode: 'HSBCHKHHHKH',
     },
   },
 
@@ -107,8 +107,8 @@ const COUNTRY_BANKING_CONFIGS = {
     bankingDetails: {
       phone: '13812345678',        // 11 digits, no prefix — system adds +86
       walletProvider: 'Alipay',
-      swiftCode: '21005366',       // 8 digits
-      bankName: 'Bank of china',
+      swiftCode: 'BKCHCNBJ',       // Bank of China — real SWIFT
+      bankName: 'Bank of China',
     },
   },
 

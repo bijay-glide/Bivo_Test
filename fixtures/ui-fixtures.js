@@ -24,7 +24,7 @@ function tryParseJson(str) {
  */
 const test = baseTest.extend({
   context: async ({}, use, testInfo) => {
-    const userDataDir = path.join(process.cwd(), '.playwright-ui-cache');
+    const userDataDir = path.join(process.cwd(), '.playwright-ui-cache', `worker-${testInfo.workerIndex}`);
     const context = await chromium.launchPersistentContext(userDataDir, {
       viewport: { width: 1280, height: 720 },
       ignoreHTTPSErrors: true,

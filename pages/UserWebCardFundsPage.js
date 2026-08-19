@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const TransferReviewPage = require('./TransferReviewPage');
 
 function extractTransactions(body) {
   if (!body) return [];
@@ -15,10 +16,11 @@ function extractTransactions(body) {
 class UserWebCardFundsPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new TransferReviewPage(page);
 
-    // Sidebar — Move Money sub-menu
-    this.moveMoneyNav = page.getByTestId('Sidebar-nav-moveMoney');
-    this.addFundsLink = page.getByTestId('Sidebar-moveMoney-addFunds');
+    // Sidebar — Move Money sub-menu (identical testids on user-web and bu-web)
+    this.moveMoneyNav = page.getByTestId('sidebar-move-money-menuitem');
+    this.addFundsLink = page.getByTestId('sidebar-money-transfer-add-fund-menuitem');
 
     // Add Funds page — Card tab
     this.cardTab = page.getByTestId('tab_card');
@@ -30,8 +32,8 @@ class UserWebCardFundsPage {
     this.transferButton      = page.getByRole('button', { name: 'Transfer' });
     this.gotItButton         = page.getByRole('button', { name: 'Got it' });
 
-    // Sidebar — Accounts section
-    this.accountsNav = page.getByTestId('Sidebar-nav-accounts');
+    // Sidebar — Accounts section (same testid on both surfaces).
+    this.accountsNav = page.getByTestId('sidebar-accounts-menuitem');
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -83,7 +85,8 @@ class UserWebCardFundsPage {
   async discoverBivoPrimaryLast4(primaryAccountNumber) {
     const accounts = await this._fetchAccountDetails();
     const primary = accounts.find(
-      (a) => a.type === 'wallet' && a.currency === 'USD' && String(a.account) === String(primaryAccountNumber),
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
+      (a) => a.type?.includes('wallet') && a.currency === 'USD' && String(a.account) === String(primaryAccountNumber),
     );
     if (!primary) throw new Error('[UserWebCardFundsPage] Primary Bivo wallet not found in accountbalance API.');
     return String(primary.ddaNumber).slice(-4);
@@ -156,11 +159,12 @@ class UserWebCardFundsPage {
    * Bivo account, and "Instantly" settlement label.
    */
   async assertReviewScreen({ amountDisplay }) {
-    await expect(this.page.getByTestId('transfer-review-title')).toContainText("Let’s Review!");
-    await expect(this.page.getByTestId('transfer-review-amount-value')).toContainText(amountDisplay);
-    await expect(this.page.getByTestId('transfer-review-from-value')).toContainText('Card account');
-    await expect(this.page.getByTestId('transfer-review-to-value')).toContainText('Bivo Account');
-    await expect(this.page.getByTestId('transfer-review-available-value')).toContainText('Instantly');
+    await this.reviewPage.verify({
+      amount: amountDisplay,
+      from: 'Card account',
+      to: 'Bivo Account',
+      available: 'Instantly',
+    });
   }
 
   // ── API capture ───────────────────────────────────────────────────────────
@@ -174,7 +178,8 @@ class UserWebCardFundsPage {
   async submitAndCaptureMoveFundApi() {
     const moveFundPromise = this.page.waitForResponse(
       (r) =>
-        r.url().includes('/user/v1/transaction/move-fund') &&
+        // user-web posts to /user/v1/..., bu-web to /business/v1/...
+        r.url().includes('/transaction/move-fund') &&
         r.request().method() === 'POST' &&
         r.ok(),
       { timeout: 30000 },
@@ -248,7 +253,7 @@ class UserWebCardFundsPage {
 
     await this.gotItButton.click();
     await this.accountsNav.click();
-    await this.page.getByTestId(`Sidebar-account-${bivoLast4}`).click();
+    await this.page.getByTestId(`sidebar-account-${bivoLast4}`).click();
 
     const response = await transactionsPromise;
     const body     = await response.json();

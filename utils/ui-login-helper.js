@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const { test } = require('@playwright/test');
 const SignInPage = require('../pages/SignInPage');
 const BuWebSignInPage = require('../pages/BuWebSignInPage');
 const VerificationPage = require('../pages/VerificationPage');
@@ -21,9 +22,23 @@ const DEFAULT_LOGIN_PASSWORD =
 const BUWEB_DEVICE_ID =
   process.env.BUWEB_DEVICE_ID || 'd7c1f3e2-9b4a-4c8e-a1f6-2b5e7c9d0a31';
 
-// Forces every bu-web login/registration request to carry the pinned device id, so the
-// trusted-device decision is deterministic regardless of profile or worker.
+// Per-worker variant of BUWEB_DEVICE_ID: swaps the final hex digit for the worker's
+// parallelIndex. All parallel bu-web specs log into the SAME onboarded account, so if
+// every worker pinned the identical device id, concurrent logins would race for the
+// same TOTP code (same secret + same 30s window) — the backend accepts it once and
+// rejects the rest, which then wait a full window and retry, serializing the "parallel"
+// run at the login step. Giving each worker its own device id lets each establish (and
+// keep) its own trusted-device state independently.
+function buWebDeviceIdForWorker() {
+  const parallelIndex = test.info().parallelIndex;
+  return BUWEB_DEVICE_ID.slice(0, -1) + (parallelIndex % 16).toString(16);
+}
+
+// Forces every bu-web login/registration request to carry this worker's pinned device
+// id, so the trusted-device decision is deterministic per worker and survives across
+// specs/runs on that worker slot.
 async function pinBuWebDeviceId(page) {
+  const deviceId = buWebDeviceIdForWorker();
   await page.route(
     /\/identity\/v1\/token(\?|$)|\/client\/v1\/client\/device\/info(\?|$)/,
     async (route) => {
@@ -38,10 +53,10 @@ async function pinBuWebDeviceId(page) {
       }
       if (!body || typeof body !== 'object') return route.continue();
 
-      if ('deviceId' in body) body.deviceId = BUWEB_DEVICE_ID;
-      if ('deviceUUID' in body) body.deviceUUID = BUWEB_DEVICE_ID;
+      if ('deviceId' in body) body.deviceId = deviceId;
+      if ('deviceUUID' in body) body.deviceUUID = deviceId;
       if (process.env.PLAYWRIGHT_DEBUG_OTP) {
-        console.log('[pinBuWebDeviceId] rewrote deviceId on', request.url());
+        console.log('[pinBuWebDeviceId] rewrote deviceId on', request.url(), '→', deviceId);
       }
       return route.continue({ postData: JSON.stringify(body) });
     },
@@ -116,13 +131,33 @@ async function loginUserWebWithPhone({
   await signInPage.goto({ standaloneUserWeb });
   await signInPage.signInWithPhoneStandaloneUserWeb(userData.phoneNumber);
 
-  await signInPage.loginWithPassword(password);
-  await signInPage.waitForPasswordScreenToLeave();
+  // Some builds/devices route straight to OTP after phone entry instead of the
+  // password screen (device-trust re-check) — detect which one actually rendered
+  // rather than assuming password always comes first.
+  await Promise.race([
+    signInPage.passwordInput.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {}),
+    verificationPage.digit1Input.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {}),
+  ]);
+  const otpFirst = await verificationPage.isOtpInputVisible();
 
-  if (await verificationPage.isOtpInputVisible()) {
-    await page.waitForTimeout(2000);
+  if (otpFirst) {
     const otp = await getOtpForPhoneNumber(request, userData.phoneNumber);
     await verificationPage.verifyOtpForUserWebFirstLogin(otp);
+
+    // Password can still follow OTP on some builds.
+    if (await signInPage.passwordInput.isVisible({ timeout: 10000 }).catch(() => false)) {
+      await signInPage.loginWithPassword(password);
+      await signInPage.waitForPasswordScreenToLeave();
+    }
+  } else {
+    await signInPage.loginWithPassword(password);
+    await signInPage.waitForPasswordScreenToLeave();
+
+    if (await verificationPage.isOtpInputVisible()) {
+      await page.waitForTimeout(2000);
+      const otp = await getOtpForPhoneNumber(request, userData.phoneNumber);
+      await verificationPage.verifyOtpForUserWebFirstLogin(otp);
+    }
   }
 
   await signInPage.verifyLoginSuccessful();
@@ -161,6 +196,63 @@ async function loginUserWebWithPhone({
 }
 
 // ── Bu-web login helpers ──────────────────────────────────────────────────────
+
+// All parallel bu-web specs authenticate with one shared TOTP secret (see
+// loginBuWebWithEmail below), so an untrusted worker's first login must land in a
+// 30s window nobody else is using, or the backend rejects the duplicate code. This
+// file-based ticket queue hands out strictly increasing, non-overlapping windows
+// across worker processes so logins never collide in the first place instead of
+// colliding and retrying. Stale tickets from a previous run are harmless: the
+// reservation is clamped to "now" on read, so an old future timestamp left behind
+// after a run ends never pushes a later run's first reservation into the past.
+const TOTP_WINDOW_MS = 30000;
+const totpReservationFile = path.join(process.cwd(), '.bivo-state', 'totp-reservation.json');
+const totpReservationLock = `${totpReservationFile}.lock`;
+
+async function acquireFileLock(lockPath, { timeoutMs = 20000, pollMs = 50 } = {}) {
+  const start = Date.now();
+  while (true) {
+    try {
+      fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      return;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      if (Date.now() - start > timeoutMs) {
+        throw new Error(`[loginBuWeb] Timed out acquiring TOTP reservation lock: ${lockPath}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+}
+
+function releaseFileLock(lockPath) {
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    // Already gone — nothing to release.
+  }
+}
+
+// Reserves an exclusive 30s TOTP window (returns its start time, ms since epoch)
+// so this call's code is guaranteed not to collide with any other reservation.
+async function reserveTotpWindow() {
+  fs.mkdirSync(path.dirname(totpReservationFile), { recursive: true });
+  await acquireFileLock(totpReservationLock);
+  try {
+    let nextWindowStart = 0;
+    try {
+      nextWindowStart = JSON.parse(fs.readFileSync(totpReservationFile, 'utf-8')).nextWindowStart || 0;
+    } catch {
+      // No reservation file yet, or unreadable — treat as "nothing reserved".
+    }
+    const currentWindowStart = Math.floor(Date.now() / TOTP_WINDOW_MS) * TOTP_WINDOW_MS;
+    const reserved = Math.max(currentWindowStart, nextWindowStart);
+    fs.writeFileSync(totpReservationFile, JSON.stringify({ nextWindowStart: reserved + TOTP_WINDOW_MS }));
+    return reserved;
+  } finally {
+    releaseFileLock(totpReservationLock);
+  }
+}
 
 // Reads bu-web user directly from shared-state-buweb.json.
 // (Does not use tryLoadSignupData because buweb state is written by saveExtendedState
@@ -209,17 +301,34 @@ async function loginBuWebWithEmail({ page, userData, password = DEFAULT_LOGIN_PA
       await page.getByRole('button', { name: 'Next' }).click();
     };
 
+    // Claim an exclusive 30s window before submitting anything, so this worker's
+    // first (untrusted-device) login never shares a code with another worker's.
+    const reservedWindowStart = await reserveTotpWindow();
+    const waitForReservedWindow = reservedWindowStart + 2000 - Date.now();
+    if (waitForReservedWindow > 0) {
+      await page.waitForTimeout(waitForReservedWindow);
+    }
+
     await enterAndSubmitTotp();
-    const navigated = await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 10000 })
+    let navigated = await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 10000 })
       .then(() => true).catch(() => false);
 
-    if (!navigated) {
-      // Code was likely from the same 30s window already used by the previous spec.
+    // The reservation above prevents collisions in the common case, but keep this as a
+    // safety net for edge cases (client/server clock skew, a reservation racing a login
+    // that was already mid-flight) so a genuinely broken login still fails instead of
+    // hanging forever, rather than silently relying on window reservation alone.
+    const MAX_TOTP_ATTEMPTS = 5;
+    for (let attempt = 2; !navigated && attempt <= MAX_TOTP_ATTEMPTS; attempt++) {
       const msToNextWindow = 30000 - (Date.now() % 30000);
-      console.log('[loginBuWeb] TOTP not accepted — waiting', Math.ceil((msToNextWindow + 1000) / 1000), 's for next window');
+      console.log(`[loginBuWeb] TOTP not accepted (attempt ${attempt - 1}/${MAX_TOTP_ATTEMPTS - 1} retries) — waiting`, Math.ceil((msToNextWindow + 1000) / 1000), 's for next window');
       await page.waitForTimeout(msToNextWindow + 1000);
       await enterAndSubmitTotp();
-      await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 35000 });
+      navigated = await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 10000 })
+        .then(() => true).catch(() => false);
+    }
+
+    if (!navigated) {
+      throw new Error(`[loginBuWeb] TOTP still not accepted after ${MAX_TOTP_ATTEMPTS} attempts`);
     }
   }
 

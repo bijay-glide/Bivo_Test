@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const TransferReviewPage = require('./TransferReviewPage');
 
 /**
  * AddFundsPage
@@ -10,6 +11,7 @@ const { expect } = require('@playwright/test');
 class AddFundsPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new TransferReviewPage(page);
 
     // Bank selection
     this.chaseAccountButton = page.getByRole('button', { name: 'Chase ************' });
@@ -19,8 +21,6 @@ class AddFundsPage {
     this.nextButton   = page.getByRole('button', { name: 'Next' });
 
     // Review screen
-    this.reviewHeading    = page.getByRole('heading');
-    this.reviewTable      = page.getByRole('table');
     this.transferButton   = page.getByRole('button', { name: 'Transfer' });
 
     // Success screen
@@ -57,10 +57,9 @@ class AddFundsPage {
    * Assert the review screen content and click Transfer.
    */
   async reviewAndConfirmTransfer() {
-    await expect(this.reviewHeading).toContainText("Let’s Review!", { timeout: 10000 });
-    await expect(this.reviewTable).toContainText(
-      'Next day for investments. In up to 5 business days for withdrawals.'
-    );
+    await this.reviewPage.verify({
+      available: 'Next day for investments. In up to 5 business days for withdrawals.',
+    });
     await this.transferButton.click();
   }
 

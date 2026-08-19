@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const TransferReviewPage = require('./TransferReviewPage');
 
 function extractTransactions(body) {
   if (!body) return [];
@@ -15,10 +16,11 @@ function extractTransactions(body) {
 class UserWebWithdrawFundsPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new TransferReviewPage(page);
 
-    // Sidebar — Move Money sub-menu
-    this.moveMoneyNav      = page.getByTestId('Sidebar-nav-moveMoney');
-    this.withdrawFundsLink = page.getByTestId('Sidebar-moveMoney-withdrawFunds');
+    // Sidebar — Move Money sub-menu (identical testids on user-web and bu-web)
+    this.moveMoneyNav      = page.getByTestId('sidebar-move-money-menuitem');
+    this.withdrawFundsLink = page.getByTestId('sidebar-money-transfer-withdraw-funds-menuitem');
 
     // Withdraw Funds form — both accounts are pre-selected by the app
     this.toAccountDropdown   = page.getByTestId('to_account');
@@ -27,15 +29,14 @@ class UserWebWithdrawFundsPage {
     this.nextButton          = page.getByRole('button', { name: 'Next' });
 
     // Review screen
-    this.reviewCard   = page.getByTestId('transfer-review');
     this.submitButton = page.getByTestId('transfer-review-submit-button');
 
     // Success screen
     this.successCard = page.getByTestId('success-card');
     this.gotItButton = page.getByTestId('success-card-ok-button');
 
-    // Sidebar — Accounts section
-    this.accountsNav = page.getByTestId('Sidebar-nav-accounts');
+    // Sidebar — Accounts section (same testid on both surfaces).
+    this.accountsNav = page.getByTestId('sidebar-accounts-menuitem');
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -86,7 +87,8 @@ class UserWebWithdrawFundsPage {
   async discoverBivoPrimaryLast4(primaryAccountNumber) {
     const accounts = await this._fetchAccountDetails();
     const primary = accounts.find(
-      (a) => a.type === 'wallet' && a.currency === 'USD' && String(a.account) === String(primaryAccountNumber),
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
+      (a) => a.type?.includes('wallet') && a.currency === 'USD' && String(a.account) === String(primaryAccountNumber),
     );
     if (!primary) throw new Error('[UserWebWithdrawFundsPage] Primary Bivo wallet not found in accountbalance API.');
     return String(primary.ddaNumber).slice(-4);
@@ -127,10 +129,11 @@ class UserWebWithdrawFundsPage {
   // ── Form assertions ───────────────────────────────────────────────────────
 
   /**
-   * Assert the "From" account is pre-selected as Bivo (money leaves Bivo).
+   * Assert the "From" account is pre-selected as the primary wallet (money leaves it).
+   * user-web names its primary wallet "Bivo"; bu-web's business wallet is named "Primary".
    */
   async assertFromAccountPreSelectedAsBivo() {
-    await expect(this.fromAccountDropdown).toContainText('Bivo', { timeout: 10000 });
+    await expect(this.fromAccountDropdown).toContainText(/Bivo|Primary/, { timeout: 10000 });
   }
 
   /**
@@ -150,19 +153,27 @@ class UserWebWithdrawFundsPage {
    */
   async enterAmountAndContinue(amount) {
     await this.amountInput.waitFor({ state: 'visible', timeout: 10000 });
-    await this.amountInput.fill(amount);
+    // user-web's amount-input-ui testid is a bare <input> that right-shifts each typed
+    // digit like a calculator (a cents-digit string, e.g. "9000" -> "$90.00") — fill()
+    // works directly. bu-web's is a wrapper <div> around a numeric-only input with no
+    // cent-shifting: non-digit characters (e.g. ".") are stripped as typed, and the
+    // remaining digits are read as a literal whole-dollar amount, not cents — so the
+    // cents string must be converted back to whole dollars (no decimal point) first.
+    const filled = await this.amountInput.fill(amount).then(() => true).catch(() => false);
+    if (!filled) {
+      const literalAmount = String(Math.round(Number(amount) / 100));
+      await this.amountInput.click();
+      await this.amountInput.pressSequentially(literalAmount, { delay: 50 });
+    }
     await expect(this.nextButton).toBeEnabled({ timeout: 5000 });
     await this.nextButton.click();
   }
 
   /**
-   * Assert the review card shows the correct amount and ACH timing text.
-   * Uses the transfer-review testid which is unique to this screen.
+   * Assert the review screen shows the correct amount and ACH timing text.
    */
   async assertReviewScreen({ amountDisplay }) {
-    await expect(this.reviewCard).toBeVisible({ timeout: 30000 });
-    await expect(this.reviewCard).toContainText(amountDisplay);
-    await expect(this.reviewCard).toContainText('In 1-3 business days');
+    await this.reviewPage.verify({ amount: amountDisplay, available: 'In 1-3 business days' });
   }
 
   // ── API capture ───────────────────────────────────────────────────────────
@@ -175,7 +186,8 @@ class UserWebWithdrawFundsPage {
   async submitAndCaptureMoveFundApi() {
     const moveFundPromise = this.page.waitForResponse(
       (r) =>
-        r.url().includes('/user/v1/transaction/move-fund') &&
+        // user-web posts to /user/v1/..., bu-web to /business/v1/...
+        r.url().includes('/transaction/move-fund') &&
         r.request().method() === 'POST' &&
         r.ok(),
       { timeout: 30000 },
@@ -192,8 +204,9 @@ class UserWebWithdrawFundsPage {
       moveFundResponse,
       moveFundRequest,
       moveFundResponseBody,
-      requestId:         moveFundResponseBody.requestId         ?? null,
-      paymentIdentifier: moveFundResponseBody.paymentIdentifier ?? null,
+      // user-web returns { requestId, paymentIdentifier }; bu-web returns { identifier }.
+      requestId:         moveFundResponseBody.requestId ?? moveFundResponseBody.identifier ?? null,
+      paymentIdentifier: moveFundResponseBody.paymentIdentifier ?? moveFundResponseBody.identifier ?? null,
     };
   }
 
@@ -243,8 +256,9 @@ class UserWebWithdrawFundsPage {
     );
 
     await this.gotItButton.click();
+
     await this.accountsNav.click();
-    await this.page.getByTestId(`Sidebar-account-${bivoLast4}`).click();
+    await this.page.getByTestId(`sidebar-account-${bivoLast4}`).click();
 
     const response = await transactionsPromise;
     const body     = await response.json();

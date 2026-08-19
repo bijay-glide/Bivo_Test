@@ -21,15 +21,15 @@ class MoveFundsPage {
   }
 
   async navigateToMoveFunds() {
-    const internalTransfer = this.page.getByTestId('Sidebar-moveMoney-withdrawFunds');
-    await this.page.getByTestId('Sidebar-nav-moveMoney').click();
+    const withdrawFunds = this.page.getByTestId('sidebar-money-transfer-withdraw-funds-menuitem');
+    await this.page.getByTestId('sidebar-move-money-menuitem').click();
     // Sub-menu may collapse if a background re-render fires (e.g. balance update after pre-fund).
     // Retry once if the item doesn't become visible within 5 s.
-    const appeared = await internalTransfer.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+    const appeared = await withdrawFunds.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
     if (!appeared) {
-      await this.page.getByTestId('Sidebar-nav-moveMoney').click();
+      await this.page.getByTestId('sidebar-move-money-menuitem').click();
     }
-    await internalTransfer.click();
+    await withdrawFunds.click();
   }
 
   async enterAmountAndContinue(amountInput) {
@@ -113,7 +113,7 @@ class MoveFundsPage {
 
     // Move-fund success screen shows "Got it" — dismiss it then open Accounts to load transactions.
     await this.page.getByRole('button', { name: 'Got it' }).click();
-    await this.page.getByTestId('Sidebar-nav-accounts').click();
+    await this.page.getByTestId('sidebar-accounts-menuitem').click();
 
     const transactionsResponse = await transactionsResponsePromise;
     const transactionsBody = await transactionsResponse.json();

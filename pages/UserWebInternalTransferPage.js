@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const TransferReviewPage = require('./TransferReviewPage');
 
 function extractTransactions(body) {
   if (!body) return [];
@@ -15,10 +16,11 @@ function extractTransactions(body) {
 class UserWebInternalTransferPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new TransferReviewPage(page);
 
-    // Sidebar — Move Money sub-menu
-    this.moveMoneynav         = page.getByTestId('Sidebar-nav-moveMoney');
-    this.internalTransferLink = page.getByTestId('Sidebar-moveMoney-internalTransfer');
+    // Sidebar — Move Money sub-menu (identical testids on user-web and bu-web)
+    this.moveMoneynav         = page.getByTestId('sidebar-move-money-menuitem');
+    this.internalTransferLink = page.getByTestId('sidebar-money-transfer-add-funds-menuitem');
 
     // Transfer form
     this.fromAccountDropdown = page.getByTestId('from_account');
@@ -28,12 +30,8 @@ class UserWebInternalTransferPage {
     this.transferButton      = page.getByRole('button', { name: 'Transfer' });
     this.gotItButton         = page.getByRole('button', { name: 'Got it' });
 
-    // Review screen
-    this.reviewHeading = page.getByRole('heading', { name: "Let's Review!" });
-    this.reviewTable   = page.getByRole('table');
-
-    // Sidebar — Accounts section
-    this.accountsNav = page.getByTestId('Sidebar-nav-accounts');
+    // Sidebar — Accounts section (same testid on both surfaces).
+    this.accountsNav = page.getByTestId('sidebar-accounts-menuitem');
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
@@ -74,8 +72,9 @@ class UserWebInternalTransferPage {
   async discoverSecondaryUsdWallet(primaryAccountNumber) {
     const accounts = await this._fetchAccountDetails();
     const account  = accounts.find(
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
       (a) =>
-        a.type === 'wallet' &&
+        a.type?.includes('wallet') &&
         a.currency === 'USD' &&
         String(a.account) !== String(primaryAccountNumber),
     );
@@ -98,7 +97,8 @@ class UserWebInternalTransferPage {
   async discoverTwoUsdWallets() {
     const accounts   = await this._fetchAccountDetails();
     const usdWallets = accounts
-      .filter((a) => a.type === 'wallet' && a.currency === 'USD')
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
+      .filter((a) => a.type?.includes('wallet') && a.currency === 'USD')
       .map((a) => ({
         accountNumber: a.account,
         accountName:   a.accountName,
@@ -136,7 +136,8 @@ class UserWebInternalTransferPage {
   async discoverNonUsdFiatWallet() {
     const accounts = await this._fetchAccountDetails();
     const account  = accounts.find(
-      (a) => a.type === 'wallet' && a.currency !== 'USD',
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
+      (a) => a.type?.includes('wallet') && a.currency !== 'USD',
     );
     if (!account) throw new Error('[UserWebInternalTransferPage] No non-USD fiat wallet found.');
     return {
@@ -188,15 +189,89 @@ class UserWebInternalTransferPage {
    * @param {{ nonUsdLast4: string }} opts last4 of a known non-USD fiat wallet ddaNumber
    */
   async assertToAccountDropdownShowsOnlyFiatWallets({ nonUsdLast4 }) {
-    await this.toAccountDropdown.click();
+    const fiatWalletTestId = `to-account-internal-${nonUsdLast4}`;
+
+    // A fiat account created moments earlier (e.g. by spec 9.2) can lag behind this
+    // dropdown's data source by a few seconds — retry with a reload rather than
+    // failing on the first miss (same pattern as MoveFundsPage's transaction retry).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.toAccountDropdown.click();
+      const appeared = await this.page.getByTestId(fiatWalletTestId)
+        .waitFor({ state: 'visible', timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+      if (appeared) break;
+      await this.page.keyboard.press('Escape');
+      await this.page.waitForTimeout(4000);
+      await this.page.reload();
+      await this.navigateToInternalTransfer();
+    }
+
     // Fiat wallet should be present
-    await expect(
-      this.page.getByTestId(`to-account-internal-${nonUsdLast4}`),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(this.page.getByTestId(fiatWalletTestId)).toBeVisible({ timeout: 5000 });
     // Coin/stablecoin accounts must not appear (e.g. "USDC" in the account name)
     await expect(
       this.page.getByText('USDC', { exact: false }),
     ).not.toBeVisible();
+    await this.page.keyboard.press('Escape');
+  }
+
+  /**
+   * Open the "To" dropdown and assert it lists every USD wallet account (primary +
+   * any secondary USD wallets) and NONE of the non-USD accounts (multicurrency
+   * fiat or stablecoin) — derived from the live account list, not a single known ID.
+   */
+  async assertToAccountDropdownShowsOnlyUsdWallets() {
+    const accounts = await this._fetchAccountDetails();
+    const usdLast4s = accounts
+      // user-web wallets are type "wallet"; bu-web business wallets are "business-wallet".
+      .filter((a) => a.type?.includes('wallet') && a.currency === 'USD')
+      .map((a) => String(a.ddaNumber).slice(-4));
+    const nonUsdLast4s = accounts
+      .filter((a) => a.currency !== 'USD')
+      .map((a) => String(a.ddaNumber).slice(-4));
+
+    if (usdLast4s.length === 0) {
+      throw new Error('[UserWebInternalTransferPage] No USD wallet accounts found.');
+    }
+
+    const allUsdWalletsVisible = async () => {
+      const results = await Promise.all(
+        usdLast4s.map((last4) =>
+          this.page.getByTestId(`to-account-internal-${last4}`)
+            .waitFor({ state: 'visible', timeout: 5000 })
+            .then(() => true)
+            .catch(() => false),
+        ),
+      );
+      return results.every(Boolean);
+    };
+
+    await this.toAccountDropdown.click();
+
+    // A USD wallet created moments earlier (e.g. by spec 9.1) can lag behind this
+    // dropdown's data source by a few seconds — retry with a reload rather than
+    // failing on the first miss (same pattern as MoveFundsPage's transaction retry).
+    for (let attempt = 0; attempt < 2 && !(await allUsdWalletsVisible()); attempt++) {
+      await this.page.keyboard.press('Escape');
+      await this.page.waitForTimeout(4000);
+      await this.page.reload();
+      await this.navigateToInternalTransfer();
+      await this.toAccountDropdown.click();
+    }
+
+    for (const last4 of usdLast4s) {
+      await expect(
+        this.page.getByTestId(`to-account-internal-${last4}`),
+        `USD wallet ending ${last4} should be listed in the To-account dropdown`,
+      ).toBeVisible({ timeout: 5000 });
+    }
+    for (const last4 of nonUsdLast4s) {
+      await expect(
+        this.page.getByTestId(`to-account-internal-${last4}`),
+        `non-USD account ending ${last4} should NOT be listed in the To-account dropdown`,
+      ).not.toBeVisible();
+    }
     await this.page.keyboard.press('Escape');
   }
 
@@ -240,9 +315,7 @@ class UserWebInternalTransferPage {
     // Wait on the Transfer button — it only appears on the review screen (form has "Next").
     // Uses 60s because the app makes an async validation call before rendering the review.
     await expect(this.transferButton).toBeVisible({ timeout: 60000 });
-    await expect(this.reviewTable).toContainText(fromName);
-    await expect(this.reviewTable).toContainText(toName);
-    await expect(this.reviewTable).toContainText(amountDisplay);
+    await this.reviewPage.verify({ from: fromName, to: toName, amount: amountDisplay });
   }
 
   // ── API capture — success ─────────────────────────────────────────────────
@@ -254,7 +327,8 @@ class UserWebInternalTransferPage {
   async submitAndCaptureMoveFundApi() {
     const moveFundPromise = this.page.waitForResponse(
       (r) =>
-        r.url().includes('/user/v1/transaction/move-fund') &&
+        // user-web posts to /user/v1/..., bu-web to /business/v1/...
+        r.url().includes('/transaction/move-fund') &&
         r.request().method() === 'POST' &&
         r.ok(),
       { timeout: 30000 },
@@ -305,7 +379,8 @@ class UserWebInternalTransferPage {
   async submitAndCaptureTransferErrorApi() {
     const errorPromise = this.page.waitForResponse(
       (r) =>
-        r.url().includes('/user/v1/transaction/move-fund') &&
+        // user-web posts to /user/v1/..., bu-web to /business/v1/...
+        r.url().includes('/transaction/move-fund') &&
         r.request().method() === 'POST',
       { timeout: 30000 },
     );
@@ -371,7 +446,7 @@ class UserWebInternalTransferPage {
 
     await this.gotItButton.click();
     await this.accountsNav.click();
-    await this.page.getByTestId(`Sidebar-account-${last4}`).click();
+    await this.page.getByTestId(`sidebar-account-${last4}`).click();
 
     const response = await transactionsPromise;
     const body     = await response.json();

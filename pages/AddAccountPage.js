@@ -4,7 +4,7 @@ const { expect } = require('@playwright/test');
  * AddAccountPage
  *
  * Covers the bu-web "open a new currency account" flow:
- *   Business Accounts (sidebar) → Add Account → "Add an Account" modal
+ *   Accounts (sidebar) → Add Account → "Add an Account" modal
  *   → enter account name → Add Account → new account appears in the sidebar.
  *
  * The account-name field validates "No number or special char allowed.", so the
@@ -15,8 +15,8 @@ class AddAccountPage {
   constructor(page) {
     this.page = page;
 
-    // Sidebar — "Business Accounts" expands to reveal the account list + "Add Account".
-    this.businessAccountsLink = page.getByRole('link', { name: 'Business Accounts' });
+    // Sidebar — "Accounts" expands to reveal the account list + "Add Account".
+    this.accountsLink = page.getByTestId('sidebar-accounts-menuitem');
     this.addAccountLink       = page.getByRole('link', { name: 'Add Account' });
 
     // "Add an Account" modal (Bootstrap dialog).
@@ -29,7 +29,7 @@ class AddAccountPage {
   }
 
   /**
-   * Expand "Business Accounts" and open the "Add an Account" modal.
+   * Expand "Accounts" and open the "Add an Account" modal.
    *
    * The SPA occasionally re-renders the sidebar mid-click and collapses the
    * sub-menu, so we re-expand until the "Add Account" link is clickable
@@ -38,8 +38,8 @@ class AddAccountPage {
   async openAddAccountModal() {
     const MAX_ATTEMPTS = 4;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      await this.businessAccountsLink.waitFor({ state: 'visible', timeout: 15000 });
-      await this.businessAccountsLink.click();
+      await this.accountsLink.waitFor({ state: 'visible', timeout: 15000 });
+      await this.accountsLink.click();
 
       const addAccountVisible = await this.addAccountLink
         .waitFor({ state: 'visible', timeout: 5000 })

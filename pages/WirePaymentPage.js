@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const OtherInternalReviewPage = require('./OtherInternalReviewPage');
 
 /** Normalize transaction list bodies from GET /transactions/v1/transactions across shape variants. */
 function extractTransactionList(body) {
@@ -55,6 +56,7 @@ function extractTransactionList(body) {
 class WirePaymentPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new OtherInternalReviewPage(page);
     this.moveMoneyLink = page.getByRole('link', { name: 'Move Money' });
     this.withdrawFundsLink = page.getByRole('link', { name: 'Withdraw Funds' });
   }
@@ -168,12 +170,14 @@ class WirePaymentPage {
    * @param {string} paymentData.amount         - e.g. '$90.00'
    */
   async verifyReviewScreen(wireData, paymentData) {
-    await expect(this.page.getByText(wireData.nickname)).toBeVisible();
-    await expect(this.page.getByText(`Account number${wireData.accountNumber}`)).toBeVisible();
-    await expect(this.page.getByText('Payment viaWire Transfer')).toBeVisible();
-    //await expect(this.page.getByText(`Requested date${paymentData.requestedDate}`)).toBeVisible();
-    await expect(this.page.getByText(`Amount${paymentData.amount}`)).toBeVisible();
-    await expect(this.page.getByText(`Routing number${wireData.routingNumber}`)).toBeVisible();
+    await this.reviewPage.verify({
+      recipient: wireData.nickname,
+      accountNumber: wireData.accountNumber,
+      routingNumber: wireData.routingNumber,
+      amount: paymentData.amount,
+      paymentVia: 'Wire Transfer',
+      requestedDate: paymentData.requestedDate,
+    });
   }
 
   /**

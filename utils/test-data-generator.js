@@ -59,12 +59,17 @@ function generateUniqueSignupPhoneNumber(areaCodes = ALLOWED_SIGNUP_AREA_CODES) 
   throw new Error('Unable to generate a unique signup phone number');
 }
 
+// Beneficiary/business address forms only accept letters, numbers, and spaces — faker
+// sometimes builds street/city names from surnames (e.g. "348 O'Conner Neck"), which trips
+// that validation and leaves Continue disabled. Strip everything else out.
+const sanitizeAddressText = (value) => value.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+
 function generateRandomStreetAddress() {
-  return faker.location.streetAddress();
+  return sanitizeAddressText(faker.location.streetAddress());
 }
 
 function generateRandomCity() {
-  return faker.location.city();
+  return sanitizeAddressText(faker.location.city());
 }
 
 function generateRandomBirthYear() {
@@ -84,10 +89,12 @@ function generateRandomSSN() {
 
 /**
  * Generates complete test data for user registration
+ * @param {object} [options]
+ * @param {string} [options.firstName] - Override the randomized first name.
  * @returns {object} Test data object
  */
-function generateUserTestData() {
-  const firstName = faker.person.firstName();
+function generateUserTestData(options = {}) {
+  const firstName = options.firstName || faker.person.firstName();
   // faker ~5% of the time returns compound surnames (e.g. "Hackett-Reynolds");
   // strip spaces/dashes/apostrophes so the name stays a single clean word.
   const lastName = faker.person.lastName().replace(/[ '-]/g, '');
@@ -224,7 +231,7 @@ function generateWireFormData(options = {}) {
  */
 function generateWirePaymentSchedule(options = {}) {
   const requestedDate = new Date().toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short', day: '2-digit', year: 'numeric',
   });
 
   return {
@@ -255,38 +262,40 @@ function generatePayeeExtraFields(countryCode) {
   switch (countryCode) {
     case 'AU':
       return {
-        streetAddress: faker.location.streetAddress(),
-        city: faker.location.city(),
+        streetAddress: generateRandomStreetAddress(),
+        city: generateRandomCity(),
       };
 
     case 'NZ':
       return {
-        streetAddress: faker.location.streetAddress(),
-        city: faker.location.city(),
+        streetAddress: generateRandomStreetAddress(),
+        city: generateRandomCity(),
         zipCode: faker.string.numeric(4),  // NZ 4-digit postal code
       };
 
     case 'CN':
       return {
-        streetAddress: faker.location.streetAddress(),
-        city: faker.location.city(),
+        streetAddress: generateRandomStreetAddress(),
+        city: generateRandomCity(),
         zipCode: faker.string.numeric(6),       // 6-digit Chinese postal code
       };
     case 'IN':
       return {
-        streetAddress: faker.location.streetAddress(),
-        city: faker.location.city(),
+        streetAddress: generateRandomStreetAddress(),
+        city: generateRandomCity(),
         zipCode: faker.string.numeric(6),       // 6-digit Indian PIN code
-        phone: `+91 9${faker.string.numeric(4)} ${faker.string.numeric(5)}`, // Indian mobile: +91 9XXXX XXXXX (10 digits, starts with 9)
+        phone: IN_TEST_PHONE,
       };
     case 'JP':
       return {
-        streetAddress: faker.location.streetAddress(),
-        city: faker.location.city(),
+        streetAddress: generateRandomStreetAddress(),
+        city: generateRandomCity(),
         zipCode: faker.string.numeric(7),       // 7-digit Japanese postal code
-        // Japanese mobile: +81 90-XXXX-XXXX. The first group must not lead with 0 or the
-        // FE's phone validator rejects it ("Invalid phone number for JP"), which left
-        // Continue disabled and flaked the JP scenarios — pin a non-zero leading digit.
+        // The phone field is a country-flag-masked input that defaults to US and only
+        // switches once it sees a "+81" prefix in the typed value — a bare local number
+        // (no prefix) left it stuck on the US mask ("Invalid phone number for US"),
+        // confirmed live. First group must not lead with 0 or the FE's phone validator
+        // rejects it ("Invalid phone number for JP").
         phone: `+81 90 ${faker.string.numeric({ length: 4, allowLeadingZeros: false })} ${faker.string.numeric(4)}`,
       };
     default:
@@ -308,8 +317,8 @@ function generateBusinessPayeeExtraFields(countryCode) {
   // GB confirmed from screenshot; assume all countries follow the same address pattern.
   // addBusinessPayee() uses isVisible() checks so extra fields are skipped when absent.
   const base = {
-    streetAddress: faker.location.streetAddress(),
-    city: faker.location.city(),
+    streetAddress: generateRandomStreetAddress(),
+    city: generateRandomCity(),
   };
 
   switch (countryCode) {
@@ -317,16 +326,19 @@ function generateBusinessPayeeExtraFields(countryCode) {
       return {
         ...base,
         zipCode: faker.string.numeric(6),
-        // Same full-international format as individual IN — "+91 9XXXX XXXXX" works in addPayee,
-        // so reuse the identical pattern in addBusinessPayee via pressSequentially
-        phone: `+91 9${faker.string.numeric(4)} ${faker.string.numeric(5)}`,
+        phone: IN_TEST_PHONE, // same fixed value used by the individual payee flow
       };
     case 'JP':
       return {
         ...base,
         zipCode: faker.string.numeric(7),
-        // Same full-international format as individual JP
-        // First group must not lead with 0 — see note in generatePayeeExtraFields('JP').
+        // The business payee phone field defaults to a US country-code mask and doesn't
+        // auto-switch — it needs the full international format (+81 prefix included),
+        // unlike the individual payee flow's plain-text phone field. Using the bare
+        // JP_TEST_PHONE local number here left the field showing "+1 (323) 456-78" /
+        // "Invalid phone number for US" and Continue disabled. First group must not
+        // lead with 0 or the FE's phone validator rejects it ("Invalid phone number
+        // for JP").
         phone: `+81 90 ${faker.string.numeric({ length: 4, allowLeadingZeros: false })} ${faker.string.numeric(4)}`,
       };
     case 'CN':
@@ -398,36 +410,15 @@ function generateFxTransactionData(options = {}) {
 // Keeps the first digits recognisable as automated test data.
 const BIVO_NUMERIC_PREFIX = '98765';
 
-/**
- * Generates a random 8-char all-uppercase-letter SWIFT / BIC code:
- *   BIVO (bank) + 4 random uppercase letters
- * All-letter format satisfies both lenient ("8-11 chars") and strict
- * ("letters only") SWIFT validators across all tested countries (JP, HK, CN).
- */
-function generateSwiftCode() {
-  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const pick = () => alpha[Math.floor(Math.random() * alpha.length)];
-  return 'BIVO' + pick() + pick() + pick() + pick();
-}
-
-/**
- * Generates a 11-digit Chinese mobile number without any country-code prefix.
- * Prefix "138" identifies automated test data; the system adds +86 automatically.
- *
- * @returns {string}  e.g. "13852904371"
- */
-function generateChinesePhoneNumber() {
-  return '138' + generateRandomDigits(8);
-}
-
-/**
- * Generates a fake bank name with a "Bivo " prefix so automated entries are easy to spot.
- *
- * @returns {string}  e.g. "Bivo Henderson LLC"
- */
-function generateBivoBankName() {
-  return 'Bivo ' + faker.company.name().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-}
+// Fixed, format-valid phone numbers for payee/beneficiary fields (IN, CN). These don't
+// need to be unique per run — only the payee's name/account fields do — so a constant
+// avoids any chance a random digit trips the FE's phone validator. JP's phone is
+// generated fresh per call instead (see generatePayeeExtraFields/
+// generateBusinessPayeeExtraFields) — it needs the full "+81 90 ..." international
+// format, which a single fixed constant can't represent as cleanly here since the
+// leading-zero constraint applies to a randomised middle group, not the whole value.
+const IN_TEST_PHONE = '+91 98765 43210';   // 10-digit Indian mobile, starts with 9
+const CN_TEST_PHONE = '13812345678';       // 11-digit Chinese mobile, no +86 prefix — system adds it
 
 /**
  * Returns freshly randomised banking-details for the given destination country.
@@ -447,14 +438,17 @@ function generateBivoBankName() {
 function generateBankingDetails(countryCode) {
   switch (countryCode) {
     case 'GB':
-      // IBAN has a strict check-digit algorithm — keep static to avoid validation failures.
-      return { iban: 'GB26542316456541232134' };
+      // Real, checksum-valid IBAN (NatWest, mod-97 verified) — the previous static value
+      // actually failed the mod-97 check despite the "known-good" comment; only passed
+      // because the server doesn't enforce the full IBAN checksum.
+      return { iban: 'GB29NWBK60161331926819' };
 
     case 'AU':
+      // Commonwealth Bank of Australia — real bank name + real BSB (Melbourne, 191 Swanston St).
       return {
-        bankName:      generateBivoBankName(),
+        bankName:      'Commonwealth Bank of Australia',
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
-        bsbCode:       '987' + generateRandomDigits(3),                 // 6 digits
+        bsbCode:       '063019',
       };
 
     case 'SV':
@@ -468,21 +462,24 @@ function generateBankingDetails(countryCode) {
       };
 
     case 'JP':
+      // MUFG Bank — real Zengin bank code (0005) + head-office branch code (001) + SWIFT.
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
-        swiftCode:     generateSwiftCode(),
-        bankCode:      generateRandomDigits(4),                          // 4 digits required by form
-        branchCode:    generateRandomDigits(3),                          // 3 digits
+        swiftCode:     'BOTKJPJT',
+        bankName:      'MUFG Bank',
+        bankCode:      '0005',
+        branchCode:    '001',
         accountType:   'Savings',
       };
 
     case 'HK':
+      // HSBC — real HK clearing bank code (004) + Central branch code (770) + SWIFT.
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(3),  // 8 digits
-        bankName:      generateBivoBankName(),
-        bankCode:      generateRandomDigits(3),                          // 3 digits (HK clearing codes)
-        branchCode:    generateRandomDigits(3),                          // 3 digits
-        swiftCode:     generateSwiftCode(),
+        bankName:      'HSBC',
+        bankCode:      '004',
+        branchCode:    '770',
+        swiftCode:     'HSBCHKHHHKH',
       };
 
     case 'MX':
@@ -492,18 +489,18 @@ function generateBankingDetails(countryCode) {
 
     case 'CN':
       return {
-        // 11 digits, no country-code prefix — system already prepends +86.
-        phone:          generateChinesePhoneNumber(),
+        phone:          CN_TEST_PHONE,
         walletProvider: 'Alipay',
-        swiftCode:      generateSwiftCode(),
-        bankName:       generateBivoBankName(),
+        swiftCode:      'BKCHCNBJ', // Bank of China — real SWIFT/BIC
+        bankName:       'Bank of China',
       };
 
     case 'NZ':
+      // Westpac New Zealand — real SWIFT (verified), matches generateBankingDetailsForBusiness.
       return {
         accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),  // 12 digits
-        bankName:      generateBivoBankName(),
-        swiftCode:     generateSwiftCode(),
+        bankName:      'Westpac New Zealand',
+        swiftCode:     'WPACNZ2W',
       };
 
     default:
@@ -517,8 +514,8 @@ function generateBankingDetails(countryCode) {
  * For most countries the business banking form matches the individual form
  * and this delegates to generateBankingDetails(). For CN, the individual flow
  * uses Alipay but the business form shows a standard bank-deposit screen
- * (account number + SWIFT + bank name). For NZ, a real bank (Westpac New
- * Zealand / WPACNZ2W) is used instead of the randomly generated one.
+ * (account number + SWIFT + bank name) instead — same real Bank of China
+ * identity as the individual flow, just without the phone/walletProvider fields.
  *
  * @param {string} countryCode
  * @returns {object}
@@ -527,8 +524,8 @@ function generateBankingDetailsForBusiness(countryCode) {
   if (countryCode === 'CN') {
     return {
       accountNumber: BIVO_NUMERIC_PREFIX + generateRandomDigits(7),
-      swiftCode:     generateSwiftCode(8),
-      bankName:      generateBivoBankName(),
+      swiftCode:     'BKCHCNBJ', // Bank of China — same real SWIFT as the individual flow
+      bankName:      'Bank of China',
     };
   }
   if (countryCode === 'NZ') {
@@ -560,8 +557,8 @@ function generateUsPaymentPayee(options = {}) {
   return {
     firstName,
     lastName,
-    addressOne: options.addressOne || faker.location.streetAddress(),
-    city: options.city || faker.location.city(),
+    addressOne: options.addressOne || generateRandomStreetAddress(),
+    city: options.city || generateRandomCity(),
     state: options.state || faker.location.state({ abbreviated: true }),
     postalCode: options.postalCode || faker.location.zipCode('#####'),
     bankAccountNumber: options.bankAccountNumber || generateRandomDigits(12),
@@ -607,9 +604,9 @@ function generateBuWebTestData() {
     },
 
     bizAddress: {
-      street: faker.location.streetAddress(),
+      street: generateRandomStreetAddress(),
       suite:  `Suite ${faker.number.int({ min: 1, max: 999 })}`,
-      city:   faker.location.city(),
+      city:   generateRandomCity(),
       state:  'AK',
       zip:    faker.location.zipCode('#####'),
     },
@@ -623,9 +620,9 @@ function generateBuWebTestData() {
       idType:       'SSN',
       ssn:          generateBusinessSSN(),
       email:        `automation.owner.${generateRandomDigits(4)}@example.com`,
-      street:       faker.location.streetAddress(),
+      street:       generateRandomStreetAddress(),
       suite:        `Apt ${faker.number.int({ min: 1, max: 99 })}`,
-      city:         faker.location.city(),
+      city:         generateRandomCity(),
       state:        'AZ',
       zip:          faker.location.zipCode('#####'),
     },
@@ -686,5 +683,4 @@ module.exports = {
   generateRandomDigits,
   generateRandomSSN,
   generateUniqueSignupPhoneNumber,
-  generateSwiftCode,
 };

@@ -7,17 +7,18 @@ class AddPayeePage {
 
   // ─── Navigation ────────────────────────────────────────────────────────────
 
+  // Payees shares the same testid on both apps (sidebar-${slugify(link)}-menuitem —
+  // see SIDEBAR_TESTIDS.md), so navigateToPayees() and navigateToPayeesBuWeb() are
+  // equivalent; both kept so existing call sites on either surface don't need renaming.
   async navigateToPayees() {
-    await this.page.getByTestId('Sidebar-nav-payees').click();
+    await this.page.getByTestId('sidebar-money-transfer-payee-menuitem').click();
     // Wait for the page to finish loading — the spinner disappears and the payee
     // list (or empty state) renders before we attempt to interact with it.
     await this.page.waitForLoadState('networkidle', { timeout: 30000 });
   }
 
-  // Bu-web sidebar uses a text "Payees" link (testid sidebar-menuitem-money-transfer-payee)
-  // rather than the user-web "Sidebar-nav-payees" testid.
   async navigateToPayeesBuWeb() {
-    await this.page.getByRole('link', { name: 'Payees' }).first().click();
+    await this.page.getByTestId('sidebar-money-transfer-payee-menuitem').click();
     await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
   }
 
@@ -233,9 +234,7 @@ class AddPayeePage {
    * row appears or the row count stops growing (no more pages left).
    */
   async _scrollUntilPayeeVisible(targetLocator) {
-    const allRows = this.page.locator(
-      '[data-testid^="payee-list-item-"]:not([data-testid*="-view-details-button-"])',
-    );
+    const allRows = this.page.locator('[data-testid^="payee-list-item-"]');
     let previousCount = -1;
     for (let i = 0; i < 10; i++) {
       if (await targetLocator.isVisible()) break;
@@ -248,8 +247,10 @@ class AddPayeePage {
   }
 
   /**
-   * Opens a payee's details view from the standalone Payees list (same
-   * payee-list-item-{firstName}-{lastName} testid as verifyPayeeInList).
+   * Opens a payee's details view from the standalone Payees list. testid is
+   * `payee-list-item-view-details-button-{firstName}-{lastName}` — the same real testid used by
+   * FxTransactionPage.viewExistingPayeeDetails() on the FX Select Payee screen; the
+   * "eye" icon renders identically (and with the same testid convention) on both.
    *
    * ASSUMPTION (unconfirmed by a live probe): this lands on the same shared
    * "Payee Details" screen reached via the FX flow's view-details button — the one
@@ -262,6 +263,31 @@ class AddPayeePage {
     const listItem = this.page.getByTestId(testId);
     await this._scrollUntilPayeeVisible(listItem);
     await expect(listItem, `payee list item "${testId}" should be visible`).toBeVisible({ timeout: 15000 });
+    await listItem.click();
+  }
+
+  /**
+   * Switches the standalone Payees list from its default "Individual" view to
+   * "Business" — confirmed via live probe: business payees (testid
+   * `payee-list-item-{businessName-with-hyphens}`, e.g. "Clint-Corp") only appear
+   * under this second tab, not alongside individual payees.
+   */
+  async switchToBusinessPayeesTab() {
+    await this.page.getByText('Business', { exact: true }).click();
+    await this.page.waitForTimeout(500);
+  }
+
+  /**
+   * Opens a business payee's details view from the standalone Payees list' Business
+   * tab. testid is `payee-list-item-view-details-button-{businessName}` with spaces
+   * replaced by hyphens (e.g. "Clint Corp" -> "Clint-Corp") — confirmed via live probe,
+   * distinct from the two-part firstName-lastName testid individual payees use.
+   */
+  async openBusinessPayeeDetails(businessName) {
+    const testId = `payee-list-item-view-details-button-${businessName.replace(/\s+/g, '-')}`;
+    const listItem = this.page.getByTestId(testId);
+    await this._scrollUntilPayeeVisible(listItem);
+    await expect(listItem, `business payee list item "${testId}" should be visible`).toBeVisible({ timeout: 15000 });
     await listItem.click();
   }
 }

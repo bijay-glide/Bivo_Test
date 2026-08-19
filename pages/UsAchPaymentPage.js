@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+const OtherInternalReviewPage = require('./OtherInternalReviewPage');
 
 function extractTransactions(body) {
   if (!body) return [];
@@ -18,13 +19,14 @@ function extractTransactions(body) {
 class UsAchPaymentPage {
   constructor(page) {
     this.page = page;
+    this.reviewPage = new OtherInternalReviewPage(page);
   }
 
-  /** e.g. "Apr 29, 2026" — matches review screen "Requested date" copy. */
+  /** e.g. "Apr 09, 2026" — matches review screen's zero-padded "Requested date" copy. */
   static formatReviewDate(date = new Date()) {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
-      day: 'numeric',
+      day: '2-digit',
       year: 'numeric',
     }).format(date);
   }
@@ -74,6 +76,7 @@ class UsAchPaymentPage {
 
     await this.page.getByRole('textbox', { name: 'Enter account number' }).fill(accountNumber);
     await this.page.getByRole('textbox', { name: 'Enter routing number' }).fill(routingNumber);
+    await this.page.getByTestId('addpayeeaddress-bank-name-input').fill("Sovereign Slate Bank"); //updated: 10Aug
     await this.page.getByRole('button', { name: 'Continue' }).click();
 
     const beneficiaryResponse = await beneficiaryResponsePromise;
@@ -131,12 +134,14 @@ class UsAchPaymentPage {
     amountDisplay,
     expectedToday,
   }) {
-    await expect(this.page.locator('#root')).toContainText(`Routing number${routingNumber}`);
-    await expect(this.page.locator('#root')).toContainText(`Recipient${firstName} ${lastName}`);
-    await expect(this.page.locator('#root')).toContainText(`Account number${accountNumber}`);
-    await expect(this.page.locator('#root')).toContainText(`Amount${amountDisplay}`);
-    await expect(this.page.locator('#root')).toContainText('Payment viaACH');
-    //await expect(this.page.locator('#root')).toContainText(`Requested date${expectedToday}`);
+    await this.reviewPage.verify({
+      recipient: `${firstName} ${lastName}`,
+      accountNumber,
+      routingNumber,
+      amount: amountDisplay,
+      paymentVia: 'ACH',
+      requestedDate: expectedToday,
+    });
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -148,8 +153,8 @@ class UsAchPaymentPage {
 
   /** Payments → Money Transfer (internal payee) → Add Payee. */
   async navigateToAddPayeeInternal() {
-    await this.page.getByTestId('sidebar-menuitem-payments').click();
-    const payeeInternal = this.page.getByTestId('sidebar-menuitem-money-transfer-payee-internal');
+    await this.page.getByTestId('sidebar-payments-menuitem').click();
+    const payeeInternal = this.page.getByTestId('sidebar-money-transfer-payee-internal-menuitem');
     await payeeInternal.waitFor({ state: 'visible', timeout: 10000 });
     await payeeInternal.click();
     await this.page.getByRole('button', { name: 'Add Payee' }).click();
@@ -185,11 +190,12 @@ class UsAchPaymentPage {
         r.url().includes('/business/v1/beneficiary/account') &&
         r.request().method() === 'POST' &&
         r.ok(),
-      { timeout: 30000 },
+      { timeout: 30000 }, 
     );
 
     await this.page.getByTestId('addpayeeaddress-bank-account-number-input').fill(bankAccountNumber);
     await this.page.getByTestId('addpayeeaddress-routing-code-input').fill(routingCode);
+    await this.page.getByTestId('addpayeeaddress-bank-name-input').fill("Sovereign Slate Bank"); //updated: 11Aug
     await this.page.getByRole('button', { name: 'Continue' }).click();
 
     const response = await accountPromise;
@@ -229,13 +235,14 @@ class UsAchPaymentPage {
     paymentVia,
     expectedToday,
   }) {
-    const root = this.page.locator('#root');
-    await expect(root).toContainText(`${firstName} ${lastName}`);
-    await expect(root).toContainText(`Account number${bankAccountNumber}`);
-    await expect(root).toContainText(`Routing number${routingNumber}`);
-    await expect(root).toContainText(`Amount${amountDisplay}`);
-    await expect(root).toContainText(`Payment via${paymentVia}`);
-    if (expectedToday) await expect(root).toContainText(`Requested date${expectedToday}`);
+    await this.reviewPage.verify({
+      recipient: `${firstName} ${lastName}`,
+      accountNumber: bankAccountNumber,
+      routingNumber,
+      amount: amountDisplay,
+      paymentVia,
+      requestedDate: expectedToday,
+    });
   }
 
   /** Clicks Transfer and captures POST /business/v1/transaction/transfer-fund (200 → identifier, status). */

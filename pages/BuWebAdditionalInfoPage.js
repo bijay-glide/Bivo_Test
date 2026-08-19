@@ -19,6 +19,7 @@ class BuWebAdditionalInfoPage {
   // Company details sub-step — fills dropdowns and clicks Continue to next sub-step
   async fillCompanyDetailsAndContinue({ ein, stateOfIncorporation, companyType, annualRevenue, industry, subIndustry, location, employeeRange, fundingSize }) {
     await this.page.getByText('EIN').click();
+    //data-testid="additionalinfo-business-id-type-option-EIN"
     await this.page.getByRole('textbox', { name: 'Enter business EIN' }).fill(ein);
     await this.page.getByRole('button', { name: 'Select state of incorporation' }).click();
     await this.page.getByRole('button', { name: stateOfIncorporation }).click();
