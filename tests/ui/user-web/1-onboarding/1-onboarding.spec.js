@@ -1,17 +1,17 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const SignInPage = require('../../../pages/SignInPage');
-const VerificationPage = require('../../../pages/VerificationPage');
-const UserRegistrationPage = require('../../../pages/UserRegistrationPage');
-const SetPasswordPage = require('../../../pages/SetPasswordPage');
-const DashboardPage = require('../../../pages/DashboardPage');
-const AchLinkPage = require('../../../pages/AchLinkPage');
-const AddFundsPage = require('../../../pages/AddFundsPage');
-const { getOtpForPhoneNumber } = require('../../../utils/otp-helper');
-const { generateUserTestData } = require('../../../utils/test-data-generator');
-const { saveSignupData, loadSignupData, loadClientId, saveClientData } = require('../../../utils/shared-state');
-const { grantAchLinkingPermission } = require('../../../utils/helpers');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const SignInPage = require('../../../../pages/SignInPage');
+const VerificationPage = require('../../../../pages/VerificationPage');
+const UserRegistrationPage = require('../../../../pages/UserRegistrationPage');
+const SetPasswordPage = require('../../../../pages/SetPasswordPage');
+const DashboardPage = require('../../../../pages/DashboardPage');
+const AchLinkPage = require('../../../../pages/AchLinkPage');
+const AddFundsPage = require('../../../../pages/AddFundsPage');
+const { getOtpForPhoneNumber } = require('../../../../utils/otp-helper');
+const { generateUserTestData } = require('../../../../utils/test-data-generator');
+const { saveSignupData, loadSignupData, loadClientId, saveClientData } = require('../../../../utils/shared-state');
+const { grantAchLinkingPermission } = require('../../../../utils/helpers');
+const { depositFundsViaWire } = require('../../../../utils/transaction-helper');
 
 const FIRST_LOGIN_PASSWORD = process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
 const DEPOSIT_AMOUNT = '$90.00';
@@ -38,7 +38,7 @@ test.describe('User-web onboarding', () => {
     const verificationPage = new VerificationPage(page);
     const registrationPage = new UserRegistrationPage(page);
 
-    const testData = generateUserTestData();
+    const testData = generateUserTestData({ firstName: process.env.SIGNUP_FIRST_NAME });
 
     await test.step('Step 1 | Open standalone user-web and sign in with phone', async () => {
       await signInPage.goto({ standaloneUserWeb: true });
@@ -122,21 +122,10 @@ test.describe('User-web onboarding', () => {
       await verificationPage.verifyOtpForUserWebFirstLogin(userData._otp);
     });
 
-    await test.step('Step 4 | Set password and listen for profile + account-info', async () => {
+    await test.step('Step 4 | Set password', async () => {
       await expect(page.getByRole('heading', { name: 'Enter Password' })).toBeVisible({
         timeout: 15000,
       });
-
-      userData._profileResponsePromise = page.waitForResponse(
-        (response) =>
-          response.url().includes('/client/v1/profile') && response.status() === 200,
-        { timeout: 60000 },
-      );
-      userData._accountInfoResponsePromise = page.waitForResponse(
-        (response) =>
-          response.url().includes('/user/v1/account-info') && response.status() === 200,
-        { timeout: 60000 },
-      );
 
       await setPasswordPage.setPassword(FIRST_LOGIN_PASSWORD);
     });
@@ -157,6 +146,8 @@ test.describe('User-web onboarding', () => {
 
     const userData = loadSignupData();
     let dashboardProfileResponse;
+    let profileResponsePromise;
+    let accountInfoResponsePromise;
 
     await test.step('Step 1 | Grant ACH linking permission via API (before login)', async () => {
       const clientId = loadClientId();
@@ -181,12 +172,23 @@ test.describe('User-web onboarding', () => {
       }
     });
 
-    await test.step('Step 5 | Confirm successful login', async () => {
+    await test.step('Step 5 | Listen for profile + account-info, then confirm successful login', async () => {
+      profileResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/client/v1/profile') && response.status() === 200,
+        { timeout: 60000 },
+      );
+      accountInfoResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/user/v1/account-info') && response.status() === 200,
+        { timeout: 60000 },
+      );
+
       await signInPage.verifyLoginSuccessful();
     });
 
-    await test.step('Step 5 | Verify /client/v1/profile, then welcome + account active UI', async () => {
-      const profileResponse = await userData._profileResponsePromise;
+    await test.step('Step 6 | Verify /client/v1/profile, then welcome + account active UI', async () => {
+      const profileResponse = await profileResponsePromise;
       const profileData = await profileResponse.json();
       expect(profileData, 'GET /client/v1/profile should include clientId').toMatchObject({
         clientId: expect.anything(),
@@ -198,68 +200,12 @@ test.describe('User-web onboarding', () => {
       await expect(page.getByText(/Your account is now active/)).toBeVisible({ timeout: 15000 });
     });
 
-    await test.step('Step 6 | Persist clientId and account number', async () => {
-      const profileData = userData._profileData;
-      const accountInfoData = await (await userData._accountInfoResponsePromise).json();
-      const accountNumber = accountInfoData[0]?.accountNumber;
-      saveClientData({ clientId: profileData.clientId, accountNumber });
-    });
-    
-    await test.step('Step 6 | Navigate to ACH link flow', async () => {
-      await dashboardPage.goToMoveMoneyUserWeb();
-      await achLinkPage.clickLinkAccountUserWeb();
-      await achLinkPage.selectLinkAchInstantlyUserWeb();
-    });
-
-    await test.step('Step 7 | Complete Plaid iframe flow and Chase popup login', async () => {
-      const chasePopup = await achLinkPage.startPlaidChaseFlow();
-      await achLinkPage.completeChaseLogin(chasePopup);
-    });
-
-    await test.step('Step 8 | Dismiss Plaid save-credentials prompt', async () => {
-      await achLinkPage.dismissSaveCredentials();
-    });
-
-    await test.step('Step 9 | Confirm ACH account linked successfully', async () => {
-      dashboardProfileResponse = await achLinkPage.confirmLinkSuccessAndCaptureDashboardProfile({
-        timeout: 12000,
-      });
-    });
-
-    await test.step('Step 10 | Add funds via linked Chase account', async () => {
-      if (dashboardProfileResponse) {
-        const profileData = await dashboardProfileResponse.json();
-        expect(profileData, 'GET /client/v1/profile should include clientId').toMatchObject({
-          clientId: expect.anything(),
-        });
-      } else {
-        console.warn('[1.3] /client/v1/profile did not fire after ACH Done; continuing once dashboard is stable.');
-      }
-
-      await dashboardPage.goToAddFunds();
-      await addFundsPage.selectChaseAccount();
-      await addFundsPage.enterAmountAndProceed(DEPOSIT_AMOUNT);
-    });
-
-    await test.step('Step 11 | Review and confirm the transfer', async () => {
-      await addFundsPage.reviewAndConfirmTransfer();
-    });
-
-    await test.step('Step 12 | Verify success banner', async () => {
-      await addFundsPage.confirmTransferSuccess(DEPOSIT_AMOUNT);
-    });
-
-    await test.step('Step 13 | Verify pending transaction in wallet ledger', async () => {
-      await dashboardPage.goToAccountsTransactions();
-      await addFundsPage.verifyPendingTransaction(DEPOSIT_AMOUNT);
-    });
-
-    await test.step(`Step 14 | Top-up account via incoming wire API ($${TOPUP_AMOUNT.toLocaleString()})`, async () => {
+    await test.step(`Step 7 | Top-up account via incoming wire API ($${TOPUP_AMOUNT.toLocaleString()})`, async () => {
       // One large settled top-up so every downstream parallel spec has funds to spend.
       await depositFundsViaWire(request, userData.accountNumber, { amount: TOPUP_AMOUNT });
     });
 
-    await test.step('Step 15 | Refresh dashboard and verify balance reflects the top-up', async () => {
+    await test.step('Step 8 | Refresh dashboard and verify balance reflects the top-up', async () => {
       const balancePromise = page.waitForResponse(
         (r) =>
           r.url().includes('/transactions/v1/transactions/accountbalance') &&
@@ -279,12 +225,67 @@ test.describe('User-web onboarding', () => {
 
       const balance = await (await balancePromise).json();
       // availableToSpend reads back in the same unit the wire top-up was sent in (a 20000
-      // top-up reads as 20000). The pending $90 Chase ACH sits in totalPendingAmount, so
-      // availableToSpend reflects the settled wire top-up.
+      // top-up reads as 20000).
       expect(
         balance.availableToSpend,
         'available balance should reflect the wire top-up',
       ).toBeGreaterThanOrEqual(TOPUP_AMOUNT);
+    });
+
+    await test.step('Step 9 | Persist clientId and account number', async () => {
+      const profileData = userData._profileData;
+      const accountInfoData = await (await accountInfoResponsePromise).json();
+      const accountNumber = accountInfoData[0]?.accountNumber;
+      saveClientData({ clientId: profileData.clientId, accountNumber });
+    });
+
+    await test.step('Step 10 | Navigate to ACH link flow', async () => {
+      await dashboardPage.goToMoveMoneyUserWeb();
+      await achLinkPage.clickLinkAccountUserWeb();
+      await achLinkPage.selectLinkAchInstantlyUserWeb();
+    });
+
+    await test.step('Step 11 | Complete Plaid iframe flow and Chase popup login', async () => {
+      const chasePopup = await achLinkPage.startPlaidChaseFlow();
+      await achLinkPage.completeChaseLogin(chasePopup);
+    });
+
+    await test.step('Step 12 | Dismiss Plaid save-credentials prompt', async () => {
+      await achLinkPage.dismissSaveCredentials();
+    });
+
+    await test.step('Step 13 | Confirm ACH account linked successfully', async () => {
+      dashboardProfileResponse = await achLinkPage.confirmLinkSuccessAndCaptureDashboardProfile({
+        timeout: 12000,
+      });
+    });
+
+    await test.step('Step 14 | Add funds via linked Chase account', async () => {
+      if (dashboardProfileResponse) {
+        const profileData = await dashboardProfileResponse.json();
+        expect(profileData, 'GET /client/v1/profile should include clientId').toMatchObject({
+          clientId: expect.anything(),
+        });
+      } else {
+        console.warn('[1.3] /client/v1/profile did not fire after ACH Done; continuing once dashboard is stable.');
+      }
+
+      await dashboardPage.goToAddFunds();
+      await addFundsPage.selectChaseAccount();
+      await addFundsPage.enterAmountAndProceed(DEPOSIT_AMOUNT);
+    });
+
+    await test.step('Step 15 | Review and confirm the transfer', async () => {
+      await addFundsPage.reviewAndConfirmTransfer();
+    });
+
+    await test.step('Step 16 | Verify success banner', async () => {
+      await addFundsPage.confirmTransferSuccess(DEPOSIT_AMOUNT);
+    });
+
+    await test.step('Step 17 | Verify pending transaction in wallet ledger', async () => {
+      await dashboardPage.goToAccountsTransactions();
+      await addFundsPage.verifyPendingTransaction(DEPOSIT_AMOUNT);
     });
   });
 

@@ -1,26 +1,27 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
 const { authenticator } = require('otplib');
-const { getOtpForBusinessEmail } = require('../../../utils/otp-helper');
-const { generateBuWebTestData } = require('../../../utils/test-data-generator');
-const { loadSignupData, saveExtendedState } = require('../../../utils/shared-state');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
-const VerificationPage = require('../../../pages/VerificationPage');
-const BuWebSignInPage = require('../../../pages/BuWebSignInPage');
-const BuWebGetStartedPage = require('../../../pages/BuWebGetStartedPage');
-const BuWebBusinessAddressPage = require('../../../pages/BuWebBusinessAddressPage');
-const BuWebBusinessVerificationPage = require('../../../pages/BuWebBusinessVerificationPage');
-const BuWebBeneficialOwnerPage = require('../../../pages/BuWebBeneficialOwnerPage');
-const BuWebAdditionalInfoPage = require('../../../pages/BuWebAdditionalInfoPage');
-const BuWebAgreementsPage = require('../../../pages/BuWebAgreementsPage');
-const AchLinkPage = require('../../../pages/AchLinkPage');
-const AddFundsPage = require('../../../pages/AddFundsPage');
+const { getOtpForBusinessEmail } = require('../../../../utils/otp-helper');
+const { generateBuWebTestData } = require('../../../../utils/test-data-generator');
+const { loadSignupData, saveExtendedState } = require('../../../../utils/shared-state');
+const { depositFundsViaWire } = require('../../../../utils/transaction-helper');
+const VerificationPage = require('../../../../pages/VerificationPage');
+const BuWebSignInPage = require('../../../../pages/BuWebSignInPage');
+const BuWebGetStartedPage = require('../../../../pages/BuWebGetStartedPage');
+const BuWebBusinessAddressPage = require('../../../../pages/BuWebBusinessAddressPage');
+const BuWebBusinessVerificationPage = require('../../../../pages/BuWebBusinessVerificationPage');
+const BuWebBeneficialOwnerPage = require('../../../../pages/BuWebBeneficialOwnerPage');
+const BuWebAdditionalInfoPage = require('../../../../pages/BuWebAdditionalInfoPage');
+const BuWebAgreementsPage = require('../../../../pages/BuWebAgreementsPage');
+const AchLinkPage = require('../../../../pages/AchLinkPage');
+const AddFundsPage = require('../../../../pages/AddFundsPage');
 
 const KEYCLOAK_TOKEN_URL = `${process.env.KEYCLOAK_HOST}/realms/glidecash/protocol/openid-connect/token`;
 const APPROVE_URL        = `${process.env.HOST}/clientaccount/v1/internal/business/account/approve`;
 const TENANT             = process.env.TENANT_IDENTIFIER;
 const FIRST_LOGIN_PASSWORD = process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
 const DEPOSIT_AMOUNT     = '$90.00';
+const PREFUND_AMOUNT     = 50000; // $500
 
 test.describe.configure({ mode: 'serial' });
 
@@ -33,6 +34,10 @@ test.describe('Bu-web onboarding', () => {
     test.setTimeout(180000);
     const testData = generateBuWebTestData();
     console.log('business email:', testData.email);
+
+    // Fresh business user: clear downstream flags a previous run may have left behind,
+    // so 9.1/9.2/10 can't mistake a prior user's completed state for this one's.
+    saveExtendedState({ secondaryUsdAccountCreated: false, multicurrencyAccountsCreated: false });
 
     const signInPage          = new BuWebSignInPage(page);
     const verificationPage    = new VerificationPage(page);
@@ -111,8 +116,8 @@ test.describe('Bu-web onboarding', () => {
         console.warn('Could not parse account creation body:', e.message);
       }
 
-      await expect(page.locator('#root')).toContainText(`Dear ${testData.getStarted.firstName} ${testData.getStarted.lastName},`);
-      await expect(page.locator('#root')).toContainText('Business Verification');
+      await expect(page.getByTestId('welcome-card-title')).toHaveText(`Dear ${testData.getStarted.firstName} ${testData.getStarted.lastName},`);
+      await expect(page.getByTestId('welcome-card-description')).toContainText('Business Verification');
     });
 
     await test.step('Step 5 | Business Registration Document — review content', async () => {
@@ -238,13 +243,16 @@ test.describe('Bu-web onboarding', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 1.2 — First login: set password + TOTP 2FA
+  // 1.2 — First login: set password. After Continue, the app redirects back
+  // to sign-in instead of proceeding straight into 2FA setup — the account
+  // still has no password-based session, so 2FA setup now happens on the next
+  // real login instead (see 1.3, Step 3).
   // ─────────────────────────────────────────────────────────────────────────
-  test('1.2 — Set password and configure 2FA', async ({ page, request }) => {
+  test('1.2 — Set password', async ({ page, request }) => {
     test.setTimeout(120000);
 
     const state = loadSignupData();
-    const { email, firstName, lastName, businessId, clientId, accountNumber } = state;
+    const { email } = state;
 
     const signInPage       = new BuWebSignInPage(page);
     const verificationPage = new VerificationPage(page);
@@ -260,57 +268,25 @@ test.describe('Bu-web onboarding', () => {
       await verificationPage.verifyAndProceedAsNewUser(otp);
     });
 
-    await test.step('Step 3 | Set new password', async () => {
+    await test.step('Step 3 | Set new password and verify the password API', async () => {
       await page.getByRole('textbox', { name: 'Enter new password' }).waitFor({ state: 'visible' });
 
-      const totpSecretPromise = page.waitForResponse(
-        res => res.url().includes('/identity/v1/2fa/generate-code') && res.request().method() === 'GET',
-        { timeout: 60000 }
+      const passwordPromise = page.waitForResponse(
+        res => res.url().includes('/identity/v1/business/user/password') && res.request().method() === 'PUT',
+        { timeout: 30000 },
       );
 
       await page.getByRole('textbox', { name: 'Enter new password' }).fill(FIRST_LOGIN_PASSWORD);
       await page.getByRole('textbox', { name: 'Confirm your password' }).fill(FIRST_LOGIN_PASSWORD);
       await page.getByRole('button', { name: 'Continue' }).click();
 
-      const totpSecretRes = await totpSecretPromise;
-      expect(totpSecretRes.status(), '2fa/generate-code should return 200').toBe(200);
-      const { encodedTotpSecret } = await totpSecretRes.json();
-      expect(encodedTotpSecret, 'encodedTotpSecret must be present').toBeTruthy();
-
-      saveExtendedState({ encodedTotpSecret });
-
-      console.log('══════════════════════════════════════════════');
-      console.log('  Bu-web User Summary');
-      console.log('══════════════════════════════════════════════');
-      console.log('  email             :', email);
-      console.log('  name              :', firstName, lastName);
-      console.log('  businessId        :', businessId);
-      console.log('  clientId          :', clientId);
-      console.log('  accountNumber     :', accountNumber);
-      console.log('  encodedTotpSecret :', encodedTotpSecret);
-      console.log('══════════════════════════════════════════════');
-
-      const totpCode = authenticator.generate(encodedTotpSecret);
-      await page.getByRole('button', { name: 'Next' }).click();
-
-      await verificationPage.digit1Input.waitFor({ state: 'visible' });
-      const isMultiDigit = await page.getByRole('textbox', { name: 'Digit 2' }).isVisible();
-      if (isMultiDigit) {
-        await verificationPage.enterVerificationCode(totpCode);
-      } else {
-        await verificationPage.digit1Input.fill(totpCode);
-      }
-      await page.getByRole('button', { name: 'Next' }).click();
+      const passwordRes = await passwordPromise;
+      expect(passwordRes.status(), 'business/user/password PUT should return 202').toBe(202);
     });
 
-    await test.step('Step 4 | Verify successful login', async () => {
-      await expect(page).toHaveURL(/bu-web\/(?!auth)/, { timeout: 30000 });
-    });
-
-    await test.step('Step 5 | Sign out', async () => {
-      await page.getByRole('button', { name: /^[A-Z]{2}$/ }).click();
-      await page.getByRole('button', { name: 'Log Out' }).click();
-      await expect(page).toHaveURL(/bu-web\/auth\/signin/, { timeout: 15000 });
+    await test.step('Step 4 | Verify redirected to forgot-password success screen (2FA setup now happens on next login)', async () => {
+      await expect(page).toHaveURL(/bu-web\/auth\/forgot-success/, { timeout: 20000 });
+      await expect(page.getByRole('heading', { name: 'Your password was updated!' })).toBeVisible({ timeout: 10000 });
     });
   });
 
@@ -338,6 +314,9 @@ test.describe('Bu-web onboarding', () => {
     const verificationPage = new VerificationPage(page);
     const achLinkPage      = new AchLinkPage(page);
     const addFundsPage     = new AddFundsPage(page);
+    let profileResponsePromise;
+    let accountInfoResponsePromise;
+    let totpSecretPromise;
 
     await test.step('Step 1 | Sign in with email', async () => {
       await signInPage.goto();
@@ -348,43 +327,127 @@ test.describe('Bu-web onboarding', () => {
       await signInPage.loginWithPassword(FIRST_LOGIN_PASSWORD);
     });
 
-    await test.step('Step 3 | Complete TOTP 2FA', async () => {
-      const totpVisible = await verificationPage.digit1Input
-        .waitFor({ state: 'visible', timeout: 5000 })
+    await test.step('Step 3 | Retrieve OTP from API and verify', async () => {
+      await verificationPage.digit1Input.waitFor({ state: 'visible', timeout: 15000 });
+
+      // Registered before submitting the OTP — verifying it is what redirects into 2FA
+      // setup, where generate-code fires immediately. Profile/account-info are also
+      // registered here (not in Step 4) since they can fire as soon as the OTP is
+      // verified, before 2FA setup/entry even completes.
+      totpSecretPromise = page.waitForResponse(
+        res => res.url().includes('/identity/v1/2fa/generate-code') && res.request().method() === 'GET',
+        { timeout: 30000 },
+      ).catch(() => null);
+      profileResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/clientaccount/v1/business/account/info') && response.status() === 200,
+        { timeout: 60000 },
+      );
+      accountInfoResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes('/business/v1/account-info') && response.status() === 200,
+        { timeout: 60000 },
+      );
+
+      const otp = await getOtpForBusinessEmail(request, email);
+      await verificationPage.verifyAndProceedAsNewUser(otp);
+    });
+
+    await test.step('Step 4 | Complete 2FA setup (extract secret from API, generate and submit code)', async () => {
+      // First time through, generate-code fires and hands us a fresh secret; on a
+      // re-run against an already-configured account it won't fire, so fall back to
+      // whatever secret is already in shared state.
+      let totpSecret = encodedTotpSecret;
+      const totpSecretRes = await totpSecretPromise;
+      if (totpSecretRes) {
+        expect(totpSecretRes.status(), '2fa/generate-code should return 200').toBe(200);
+        const body = await totpSecretRes.json();
+        totpSecret = body.encodedTotpSecret;
+        expect(totpSecret, 'encodedTotpSecret must be present').toBeTruthy();
+        saveExtendedState({ encodedTotpSecret: totpSecret });
+        console.log('[1.3] 2FA set up on this login — encodedTotpSecret saved to shared state.');
+
+        // First-time setup shows a QR-code screen ("Please use Google authenticator to
+        // proceed") before the code-entry screen appears — dismiss it to continue.
+        await page.getByRole('button', { name: 'Next' }).click();
+      }
+
+      await verificationPage.digit1Input.waitFor({ state: 'visible', timeout: 15000 });
+      const isMultiDigit = await page.getByRole('textbox', { name: 'Digit 2' }).isVisible();
+
+      const enterAndSubmitTotp = async () => {
+        const totpCode = authenticator.generate(totpSecret);
+        if (isMultiDigit) {
+          await verificationPage.enterVerificationCode(totpCode);
+        } else {
+          await verificationPage.digit1Input.fill(totpCode);
+        }
+        await page.getByRole('button', { name: 'Next' }).click();
+      };
+
+      await enterAndSubmitTotp();
+      const navigated = await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 10000 })
         .then(() => true).catch(() => false);
 
-      if (totpVisible) {
-        const isMultiDigit = await page.getByRole('textbox', { name: 'Digit 2' }).isVisible();
-
-        const enterAndSubmitTotp = async () => {
-          const totpCode = authenticator.generate(encodedTotpSecret);
-          if (isMultiDigit) {
-            await verificationPage.enterVerificationCode(totpCode);
-          } else {
-            await verificationPage.digit1Input.fill(totpCode);
-          }
-          await page.getByRole('button', { name: 'Next' }).click();
-        };
-
+      if (!navigated) {
+        const msToNextWindow = 30000 - (Date.now() % 30000);
+        console.log('[Step 4] TOTP not accepted — waiting', Math.ceil((msToNextWindow + 1000) / 1000), 's for next window');
+        await page.waitForTimeout(msToNextWindow + 1000);
         await enterAndSubmitTotp();
-        const navigated = await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 10000 })
-          .then(() => true).catch(() => false);
-
-        if (!navigated) {
-          const msToNextWindow = 30000 - (Date.now() % 30000);
-          console.log('[Step 3] TOTP not accepted — waiting', Math.ceil((msToNextWindow + 1000) / 1000), 's for next window');
-          await page.waitForTimeout(msToNextWindow + 1000);
-          await enterAndSubmitTotp();
-          await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 35000 });
-        }
+        await page.waitForURL(/bu-web\/(?!auth)/, { timeout: 35000 });
       }
 
       await page.waitForTimeout(1000);
     });
 
+    await test.step('Step 5 | Verify business account-info APIs, then welcome UI', async () => {
+      const profileResponse = await profileResponsePromise;
+      const profileData = await profileResponse.json();
+      expect(profileData, 'GET /clientaccount/v1/business/account/info should include clientId').toMatchObject({
+        clientId: expect.anything(),
+      });
+
+      const accountInfoData = await (await accountInfoResponsePromise).json();
+      expect(
+        accountInfoData[0]?.accountNumber,
+        'GET /business/v1/account-info should include accountNumber',
+      ).toBeDefined();
+
+      // Bu-web's welcome banner splits the name and the welcome copy across two lines
+      // (no single "Dear X, Bivo welcomes you!" string, and no "account is now active" text).
+      await expect(page.getByTestId('welcome-card-title')).toHaveText(`Dear ${firstName} ${lastName},`, { timeout: 15000 });
+      await expect(page.getByTestId('welcome-card-description')).toContainText('Bivo welcomes you!', { timeout: 15000 });
+    });
+
+    await test.step('Step 6 | Pre-fund account via incoming wire API', async () => {
+      await depositFundsViaWire(request, accountNumber, { amount: PREFUND_AMOUNT });
+    });
+
+    await test.step('Step 7 | Refresh dashboard and verify balance reflects the pre-fund top-up', async () => {
+      // Bu-web's balance endpoint is /business/v1/balance (not user-web's
+      // /transactions/v1/transactions/accountbalance), though the response shape
+      // (including availableToSpend) is identical. We're already on the dashboard
+      // from Step 5, so a plain reload is enough to trigger a fresh fetch.
+      const balancePromise = page.waitForResponse(
+        (r) =>
+          r.url().includes('/business/v1/balance') &&
+          r.request().method() === 'GET' &&
+          r.ok(),
+        { timeout: 30000 },
+      );
+
+      await page.reload({ waitUntil: 'networkidle' });
+
+      const balance = await (await balancePromise).json();
+      expect(
+        balance.availableToSpend,
+        'available balance should reflect the wire top-up',
+      ).toBeGreaterThanOrEqual(PREFUND_AMOUNT);
+    });
+
     let bankAlreadyLinked = false;
 
-    await test.step('Step 4 | Navigate to Link Bank Account', async () => {
+    await test.step('Step 8 | Navigate to Link Bank Account', async () => {
       await page.getByRole('link', { name: 'Move Money' }).click();
       await page.getByRole('link', { name: 'Link Account' }).click();
 
@@ -397,49 +460,45 @@ test.describe('Bu-web onboarding', () => {
       }
     });
 
-    await test.step('Step 5 | Complete Plaid / Chase sandbox flow', async () => {
+    await test.step('Step 9 | Complete Plaid / Chase sandbox flow', async () => {
       if (bankAlreadyLinked) return;
       const chasePopup = await achLinkPage.startPlaidChaseFlow();
       await achLinkPage.completeChaseLogin(chasePopup);
     });
 
-    await test.step('Step 6 | Dismiss Plaid save-credentials prompt', async () => {
+    await test.step('Step 10 | Dismiss Plaid save-credentials prompt', async () => {
       if (bankAlreadyLinked) return;
       await achLinkPage.dismissSaveCredentials();
     });
 
-    await test.step('Step 7 | Confirm Chase account linked', async () => {
+    await test.step('Step 11 | Confirm Chase account linked', async () => {
       if (bankAlreadyLinked) return;
       await achLinkPage.doneButton.waitFor({ state: 'visible', timeout: 15000 });
       await achLinkPage.doneButton.click();
       await expect(page.locator('#root')).toContainText('Chase************0000', { timeout: 15000 });
     });
 
-    await test.step('Step 8 | Navigate to Add Funds', async () => {
+    await test.step('Step 12 | Navigate to Add Funds', async () => {
       await page.getByRole('link', { name: 'Add Funds' }).waitFor({ state: 'visible', timeout: 5000 });
       await page.getByRole('link', { name: 'Add Funds' }).click();
     });
 
-    await test.step('Step 9 | Select Chase account and enter amount', async () => {
+    await test.step('Step 13 | Select Chase account and enter amount', async () => {
       await addFundsPage.selectChaseAccount();
       await addFundsPage.enterAmountAndProceed(DEPOSIT_AMOUNT);
     });
 
-    await test.step('Step 10 | Review and confirm transfer', async () => {
+    await test.step('Step 14 | Review and confirm transfer', async () => {
       await addFundsPage.reviewAndConfirmTransfer();
     });
 
-    await test.step('Step 11 | Verify success banner', async () => {
+    await test.step('Step 15 | Verify success banner', async () => {
       await addFundsPage.confirmTransferSuccess(DEPOSIT_AMOUNT);
     });
 
-    await test.step('Step 12 | Verify pending transaction in wallet ledger', async () => {
+    await test.step('Step 16 | Verify pending transaction in wallet ledger', async () => {
       await page.getByRole('link', { name: 'Business Accounts' }).click();
       await addFundsPage.verifyPendingTransaction(DEPOSIT_AMOUNT);
-    });
-
-    await test.step('Step 13 | Pre-fund account via incoming wire API', async () => {
-      await depositFundsViaWire(request, accountNumber, { amount: 50000 }); // $500
     });
   });
 
