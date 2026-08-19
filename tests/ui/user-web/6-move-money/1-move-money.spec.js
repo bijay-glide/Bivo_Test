@@ -1,8 +1,8 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { toCentsInput } = require('../../../utils/amount-input');
-const MoveFundsPage = require('../../../pages/MoveFundsPage');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { toCentsInput } = require('../../../../utils/amount-input');
+const MoveFundsPage = require('../../../../pages/MoveFundsPage');
 
 const MOVE_FUNDS_DATA = {
   amountUsd: '10.00',

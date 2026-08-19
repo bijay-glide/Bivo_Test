@@ -1,8 +1,8 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
-const { toCentsInput } = require('../../../utils/amount-input');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { depositFundsViaWire } = require('../../../../utils/transaction-helper');
+const { toCentsInput } = require('../../../../utils/amount-input');
 
 // Bu-web move-money analog: "Withdraw Funds" (ACH withdrawal from the Bivo wallet
 // to the linked external Chase account). Internal Transfer is unavailable here —
