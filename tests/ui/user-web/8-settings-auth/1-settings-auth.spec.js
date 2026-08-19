@@ -1,9 +1,9 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const SignInPage = require('../../../pages/SignInPage');
-const VerificationPage = require('../../../pages/VerificationPage');
-const { getOtpForPhoneNumber } = require('../../../utils/otp-helper');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const SignInPage = require('../../../../pages/SignInPage');
+const VerificationPage = require('../../../../pages/VerificationPage');
+const { getOtpForPhoneNumber } = require('../../../../utils/otp-helper');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
 
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
 
@@ -178,45 +178,12 @@ test.describe('User-web — Auth, Dashboard & Settings', () => {
     expect(tokenBeforeLogout, 'Should be authenticated before logout').toBeTruthy();
 
     await test.step('Step 1 | Find and click the logout button', async () => {
-      // Attempt 1: user avatar in the header (top-right "DG" circle)
-      const headerAvatar = page.locator('header button, [class*="avatar"], [class*="user-menu"]').last();
-      if (await headerAvatar.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await headerAvatar.click();
-        await page.waitForTimeout(600);
-      }
-
-      // Collect all candidate logout elements across avatar dropdown + sidebar + settings
-      const logoutCandidates = [
-        page.getByRole('button', { name: /log.?out|sign.?out/i }),
-        page.getByRole('link',   { name: /log.?out|sign.?out/i }),
-        page.locator('[data-testid*="logout"], [data-testid*="signout"]').first(),
-        page.locator('text=/log.?out|sign.?out/i').first(),
-      ];
-
-      let found = false;
-      for (const el of logoutCandidates) {
-        if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-          await el.click();
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        // Attempt 2: navigate into Settings — logout may be inside a sub-section
-        await goToSettings(page);
-        for (const el of logoutCandidates) {
-          if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
-            await el.click();
-            found = true;
-            break;
-          }
-        }
-      }
-
-      if (!found) {
-        test.skip(true, 'Logout button not found — inspect the avatar menu or Settings sub-pages');
-      }
+      // The header avatar renders the user's initials (e.g. "SL") as its accessible name —
+      // same pattern as bu-web's avatar button. Clicking it expands a menu containing a
+      // "Log Out" button. Confirmed via live probe (Aug 2026): no data-testid exists for
+      // either control, so role+name is the only reliable locator.
+      await page.getByRole('button', { name: /^[A-Z]{2}$/ }).click();
+      await page.getByRole('button', { name: 'Log Out' }).click();
     });
 
     await test.step('Step 2 | URL redirects to sign-in page', async () => {

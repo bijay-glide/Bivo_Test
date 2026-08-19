@@ -1,7 +1,7 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const BuWebSignInPage = require('../../../pages/BuWebSignInPage');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const BuWebSignInPage = require('../../../../pages/BuWebSignInPage');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
 
 const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || process.env.FIRST_LOGIN_PASSWORD || 'Test12345.';
 
