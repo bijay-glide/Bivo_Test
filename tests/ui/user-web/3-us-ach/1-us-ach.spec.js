@@ -1,8 +1,8 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { toCentsInput } = require('../../../utils/amount-input');
-const UsAchPaymentPage = require('../../../pages/UsAchPaymentPage');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { toCentsInput } = require('../../../../utils/amount-input');
+const UsAchPaymentPage = require('../../../../pages/UsAchPaymentPage');
 
 const US_PAYMENT_DATA = {
   firstName: 'First Name',

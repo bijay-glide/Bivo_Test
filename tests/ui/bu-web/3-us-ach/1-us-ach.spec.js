@@ -1,10 +1,10 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
-const { toCentsInput, formatUsdDisplay } = require('../../../utils/amount-input');
-const { generateUsPaymentPayee } = require('../../../utils/test-data-generator');
-const UsAchPaymentPage = require('../../../pages/UsAchPaymentPage');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { depositFundsViaWire } = require('../../../../utils/transaction-helper');
+const { toCentsInput, formatUsdDisplay } = require('../../../../utils/amount-input');
+const { generateUsPaymentPayee } = require('../../../../utils/test-data-generator');
+const UsAchPaymentPage = require('../../../../pages/UsAchPaymentPage');
 
 // Amount stays fixed so it lines up with the pre-funded balance and the review assertion.
 const AMOUNT_USD = '90.00';
