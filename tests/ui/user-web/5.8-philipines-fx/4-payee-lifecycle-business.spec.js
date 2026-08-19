@@ -1,0 +1,187 @@
+// User-web FX — Philippines, business-payee lifecycle. Two scenarios exercising saved
+// business-payee edit on top of the channel coverage in 2-business-philipines-fx.spec.js:
+//   1. Edits an existing business payee's name + Bank Deposit banking details from the
+//      standalone Payees list page (Business tab), then sends to the edited payee.
+//   2. Edits an existing business payee's name + Bank Deposit banking details from the
+//      transaction Review Transfer page itself, then confirms with the edit.
+// No "reuse across a different channel" scenario here: Philippines' business tab only
+// exposes 2 deliver-to channels (Bank Deposit, Instant Card Payout), and Instant Card
+// Payout is excluded from that pattern (no saved-banking-details reuse path), leaving no
+// second non-card channel to reuse across — same gap as Mexico/China business, both
+// skipped/scoped down for the same reason.
+// Every scenario asserts the payment API returns a paymentIdentifier, the review UI
+// reflects the correct business name, and the account ledger shows the resulting DEBIT.
+process.env.BIVO_UI_STATE_SUITE = 'userweb';
+
+const { test, expect } = require('@playwright/test');
+const { generateFxTransactionData, generateBusinessPayeeExtraFields, generateRandomDigits } = require('../../../../utils/test-data-generator');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
+const AddPayeePage = require('../../../../pages/AddPayeePage');
+
+const SEND_AMOUNT_USD = '25';
+const BIVO_PREFIX = '98765';
+const PH_BANK_NAME = 'Bank of the Philippine Islands';
+const PH_BANK_CODE = '010530030';
+const PH_SWIFT_CODE = 'PNBMPHMMXXX';
+// Second, distinct bank name/code/SWIFT — used only as the "edited" value.
+const EDITED_BANK_DEPOSIT = { bankName: 'Metropolitan Bank and Trust Company', bankCode: '010270044', swiftCode: 'MBTCPHMMXXX' };
+
+async function loginAndDiscoverAccount(page, request, fxPage) {
+  const userData = resolveUserDataForLogin();
+  const loginResult = await loginUserWebWithPhone({ page, request, userData });
+  const bivoAccountNumber = loginResult?.bivo_account_number || userData.accountNumber || '';
+  const bivoDda = loginResult?.bivo_dda_number || userData.ddaNumber || '';
+  const bivoLast4 = String(bivoDda).slice(-4);
+  expect(bivoAccountNumber, 'Bivo account number should be available after login').toBeTruthy();
+  expect(bivoLast4, 'Bivo DDA last4 should be derivable for sidebar navigation').toBeTruthy();
+  return { bivoAccountNumber, bivoLast4 };
+}
+
+/** Creates a fresh Philippines business payee via Bank Deposit and confirms the
+ *  transaction, then verifies the resulting DEBIT in the Bivo account ledger. */
+async function createAndConfirmNewPhBusinessPayee(fxPage, fxData, businessName, businessExtraFields, bankingData, bivoAccountNumber, bivoLast4) {
+  await fxPage.navigateToCreateFxTransactionUserWeb();
+  await fxPage.switchToBusinessTab();
+  await fxPage.selectBusinessDestinationCountryByTestId('PH');
+  await fxPage.verifyDeliverToSelected('Bank Deposit');
+  await fxPage.userWebFocusYouSendSection();
+  await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+  await fxPage.continue();
+
+  await fxPage.addBusinessPayee(businessName, businessExtraFields);
+  await fxPage.enterPhBankDepositDetails(bankingData);
+  await fxPage.handleIdentityStepIfPresent(fxData.identityType, fxData.identityNumber);
+
+  await fxPage.verifyReviewTransferScreenShowsName(businessName);
+  await fxPage.fillFxPaymentNote(fxData.note);
+  await fxPage.fillFxInvoiceNumberIfPresent();
+  const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
+  expect(paymentIdentifier, 'first transaction (new Philippines business payee) should return a paymentIdentifier').toBeTruthy();
+  await fxPage.verifyProcessingOrWaysToFundAndDismiss();
+
+  const { transactions } = await fxPage.navigateToBivoAccountAndCaptureTransactions({ bivoLast4, bivoAccountNumber });
+  await fxPage.assertFxDebitTransaction({ initialTransactions: transactions, bivoAccountNumber, paymentIdentifier, amountUsd: SEND_AMOUNT_USD });
+}
+
+test.describe('User-web FX — Philippines business-payee lifecycle', () => {
+  test.describe.configure({ retries: 1 });
+
+  test('Edits a saved Philippines business payee from the standalone Payees list page, then sends to the edited payee', async ({ page, request }) => {
+    test.setTimeout(180000);
+
+    const addPayeePage = new AddPayeePage(page);
+    const fxPage = new FxTransactionPage(page);
+    const fxData = generateFxTransactionData({ amountUsd: SEND_AMOUNT_USD, note: 'Sent from Bivo', countryCode: 'PH' });
+    const businessName = `${fxData.beneficiaryFirstName} Corp`;
+    const businessExtraFields = generateBusinessPayeeExtraFields('PH');
+    const bankingData = { bankName: PH_BANK_NAME, bankCode: PH_BANK_CODE, swiftCode: PH_SWIFT_CODE, accountNumber: BIVO_PREFIX + generateRandomDigits(10) };
+    const updatedBusinessName = `${businessName}X`;
+    let bivoAccountNumber = '';
+    let bivoLast4 = '';
+
+    await test.step('Step 1 | Login', async () => {
+      ({ bivoAccountNumber, bivoLast4 } = await loginAndDiscoverAccount(page, request, fxPage));
+    });
+
+    await test.step('Step 2 | First transaction — new Philippines business payee via Bank Deposit', async () => {
+      await createAndConfirmNewPhBusinessPayee(fxPage, fxData, businessName, businessExtraFields, bankingData, bivoAccountNumber, bivoLast4);
+    });
+
+    await test.step('Step 3 | Edit the payee (business name + Bank Deposit details) from the standalone Payees list page (Business tab)', async () => {
+      await addPayeePage.navigateToPayees();
+      await addPayeePage.switchToBusinessPayeesTab();
+      await addPayeePage.openBusinessPayeeDetails(businessName);
+      await fxPage.editBusinessPayeeNameAndCaptureApi({ businessName: updatedBusinessName });
+      const { updateResponse } = await fxPage.editPayeeAccountFieldsAndCaptureApi({
+        fields: [
+          { placeholder: 'Enter bank name', value: EDITED_BANK_DEPOSIT.bankName },
+          { placeholder: 'Enter bank code', value: EDITED_BANK_DEPOSIT.bankCode },
+          { placeholder: 'Enter SWIFT code', value: EDITED_BANK_DEPOSIT.swiftCode },
+        ],
+      });
+      expect(updateResponse.ok(), 'Bank Deposit details update should succeed').toBeTruthy();
+    });
+
+    await test.step('Step 4 | Send a new transaction to the edited business payee via Bank Deposit', async () => {
+      await fxPage.navigateToCreateFxTransactionUserWeb();
+      await fxPage.switchToBusinessTab();
+      await fxPage.selectBusinessDestinationCountryByTestId('PH');
+      await fxPage.verifyDeliverToSelected('Bank Deposit');
+      await fxPage.userWebFocusYouSendSection();
+      await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+      await fxPage.continue();
+
+      await fxPage.selectExistingBusinessPayeeByName(updatedBusinessName);
+      await expect(page.locator('#root')).toContainText(updatedBusinessName);
+
+      await fxPage.fillFxPaymentNote(fxData.note);
+      await fxPage.fillFxInvoiceNumberIfPresent();
+      const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
+      expect(paymentIdentifier, 'transaction to the list-page-edited business payee should return a paymentIdentifier').toBeTruthy();
+      await fxPage.verifyProcessingOrWaysToFundAndDismiss();
+
+      const { transactions } = await fxPage.navigateToBivoAccountAndCaptureTransactions({ bivoLast4, bivoAccountNumber });
+      await fxPage.assertFxDebitTransaction({ initialTransactions: transactions, bivoAccountNumber, paymentIdentifier, amountUsd: SEND_AMOUNT_USD });
+    });
+  });
+
+  test('Edits a saved Philippines business payee from the transaction Review Transfer page, then confirms with the edit', async ({ page, request }) => {
+    test.setTimeout(180000);
+
+    const fxPage = new FxTransactionPage(page);
+    const fxData = generateFxTransactionData({ amountUsd: SEND_AMOUNT_USD, note: 'Sent from Bivo', countryCode: 'PH' });
+    const businessName = `${fxData.beneficiaryFirstName} Corp`;
+    const businessExtraFields = generateBusinessPayeeExtraFields('PH');
+    const bankingData = { bankName: PH_BANK_NAME, bankCode: PH_BANK_CODE, swiftCode: PH_SWIFT_CODE, accountNumber: BIVO_PREFIX + generateRandomDigits(10) };
+    const updatedBusinessName = `${businessName}Z`;
+    let bivoAccountNumber = '';
+    let bivoLast4 = '';
+
+    await test.step('Step 1 | Login', async () => {
+      ({ bivoAccountNumber, bivoLast4 } = await loginAndDiscoverAccount(page, request, fxPage));
+    });
+
+    await test.step('Step 2 | Transaction up to Review Transfer — new Philippines business payee via Bank Deposit', async () => {
+      await fxPage.navigateToCreateFxTransactionUserWeb();
+      await fxPage.switchToBusinessTab();
+      await fxPage.selectBusinessDestinationCountryByTestId('PH');
+      await fxPage.verifyDeliverToSelected('Bank Deposit');
+      await fxPage.userWebFocusYouSendSection();
+      await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+      await fxPage.continue();
+
+      await fxPage.addBusinessPayee(businessName, businessExtraFields);
+      await fxPage.enterPhBankDepositDetails(bankingData);
+      await fxPage.handleIdentityStepIfPresent(fxData.identityType, fxData.identityNumber);
+      await expect(page.getByRole('heading', { name: 'Review Transfer' })).toBeVisible({ timeout: 15000 });
+    });
+
+    await test.step('Step 3 | Edit the payee (business name + Bank Deposit details) from the Review Transfer page itself', async () => {
+      await fxPage.openBusinessPayeeDetailsFromReviewTransfer(businessName);
+      await fxPage.editBusinessPayeeNameAndCaptureApi({ businessName: updatedBusinessName });
+      const { updateResponse } = await fxPage.editPayeeAccountFieldsAndCaptureApi({
+        fields: [
+          { placeholder: 'Enter bank name', value: EDITED_BANK_DEPOSIT.bankName },
+          { placeholder: 'Enter bank code', value: EDITED_BANK_DEPOSIT.bankCode },
+          { placeholder: 'Enter SWIFT code', value: EDITED_BANK_DEPOSIT.swiftCode },
+        ],
+      });
+      expect(updateResponse.ok(), 'Bank Deposit details update should succeed').toBeTruthy();
+
+      await expect(page.getByRole('heading', { name: 'Review Transfer' })).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('#root')).toContainText(updatedBusinessName);
+    });
+
+    await test.step('Step 4 | Confirm the transaction with the edited business payee', async () => {
+      await fxPage.fillFxPaymentNote(fxData.note);
+      await fxPage.fillFxInvoiceNumberIfPresent();
+      const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
+      expect(paymentIdentifier, 'transaction confirmed with review-page-edited business payee should return a paymentIdentifier').toBeTruthy();
+      await fxPage.verifyProcessingOrWaysToFundAndDismiss();
+
+      const { transactions } = await fxPage.navigateToBivoAccountAndCaptureTransactions({ bivoLast4, bivoAccountNumber });
+      await fxPage.assertFxDebitTransaction({ initialTransactions: transactions, bivoAccountNumber, paymentIdentifier, amountUsd: SEND_AMOUNT_USD });
+    });
+  });
+});
