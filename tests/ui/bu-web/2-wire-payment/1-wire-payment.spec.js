@@ -1,9 +1,9 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { depositFundsViaWire } = require('../../../utils/transaction-helper');
-const WirePaymentPage = require('../../../pages/WirePaymentPage');
-const { generateWireFormData, generateWirePaymentSchedule } = require('../../../utils/test-data-generator');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { depositFundsViaWire } = require('../../../../utils/transaction-helper');
+const WirePaymentPage = require('../../../../pages/WirePaymentPage');
+const { generateWireFormData, generateWirePaymentSchedule } = require('../../../../utils/test-data-generator');
 
 test.describe('Bu-web Wire Payment', () => {
   test('Add wire details and execute wire transfer', async ({ page, request }) => {
