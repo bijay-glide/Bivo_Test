@@ -1,14 +1,15 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test } = require('../../../fixtures/ui-fixtures');
-const { generateFxTransactionData, generateBankingDetails } = require('../../../utils/test-data-generator');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+const { test } = require('../../../../fixtures/ui-fixtures');
+const { generateFxTransactionData, generateBankingDetails } = require('../../../../utils/test-data-generator');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
+const { TOP_FX_COUNTRIES } = require('../../../../utils/fx-countries');
 
-// Representative subset of FX destinations for bu-web (individual payee).
-// Expand once the flow is proven green; the FX UI is shared with user-web.
-const FX_COUNTRIES = ['GB', 'IN', 'AU'];
+// Full top-destination list for bu-web (individual payee) — mirrors user-web's 5.1 coverage.
+// CN is excluded here — it has dedicated, more thorough coverage in 5.7-china-fx.
+const FX_COUNTRIES = TOP_FX_COUNTRIES.filter((countryCode) => countryCode !== 'CN');
 
 test.describe('Bu-web FX — top destination countries', () => {
   for (const countryCode of FX_COUNTRIES) {

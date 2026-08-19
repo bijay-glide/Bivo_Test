@@ -1,4 +1,4 @@
-// Business-payee counterpart to 1.8 ui_userweb_fx_multicountry.spec.js.
+// Business-payee counterpart to 5.1-fx-multicountry/1-fx-multicountry.spec.js.
 // Runs the same TOP_FX_COUNTRIES loop but selects the Business tab on the
 // country picker and asserts that POST /remittance/v1/international/payment
 // returns a paymentIdentifier (transaction was successfully initiated).
@@ -9,11 +9,11 @@ const {
   generateFxTransactionData,
   generateBankingDetailsForBusiness,
   generateBusinessPayeeExtraFields,
-} = require('../../../utils/test-data-generator');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
-const { TOP_FX_COUNTRIES } = require('../../../utils/fx-countries');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+} = require('../../../../utils/test-data-generator');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
+const { TOP_FX_COUNTRIES } = require('../../../../utils/fx-countries');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
 
 test.describe('User-web FX — Business payee, top destination countries', () => {
   for (const countryCode of TOP_FX_COUNTRIES) {

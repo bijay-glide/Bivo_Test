@@ -1,20 +1,21 @@
 // Business-payee counterpart to 1.7 ui_buweb_fx_multicountry.spec.js.
 // Selects the Business tab on the country picker and asserts that the FX payment
 // POST returns a paymentIdentifier (transaction successfully initiated).
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
 const {
   generateFxTransactionData,
   generateBankingDetailsForBusiness,
   generateBusinessPayeeExtraFields,
-} = require('../../../utils/test-data-generator');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+} = require('../../../../utils/test-data-generator');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
+const { TOP_FX_COUNTRIES } = require('../../../../utils/fx-countries');
 
-// Representative subset of FX destinations for bu-web (business payee).
-const FX_COUNTRIES = ['GB', 'IN', 'AU'];
+// Full top-destination list for bu-web (business payee) — mirrors user-web's 5.2 coverage.
+const FX_COUNTRIES = TOP_FX_COUNTRIES;
 
 test.describe('Bu-web FX — Business payee, top destination countries', () => {
   for (const countryCode of FX_COUNTRIES) {

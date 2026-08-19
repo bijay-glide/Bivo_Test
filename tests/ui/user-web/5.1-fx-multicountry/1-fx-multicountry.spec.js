@@ -2,14 +2,17 @@
 process.env.BIVO_UI_STATE_SUITE = 'userweb';
 
 const { test } = require('@playwright/test');
-const { generateFxTransactionData, generateBankingDetails } = require('../../../utils/test-data-generator');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
-const { TOP_FX_COUNTRIES } = require('../../../utils/fx-countries');
-const { COUNTRY_BANKING_CONFIGS } = require('../../../utils/fx-country-configs');
+const { generateFxTransactionData, generateBankingDetails } = require('../../../../utils/test-data-generator');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
+const { TOP_FX_COUNTRIES } = require('../../../../utils/fx-countries');
+const { COUNTRY_BANKING_CONFIGS } = require('../../../../utils/fx-country-configs');
+
+// CN is excluded here — it has dedicated, more thorough coverage in 5.7-china-fx.
+const FX_COUNTRIES = TOP_FX_COUNTRIES.filter((countryCode) => countryCode !== 'CN');
 
 test.describe('User-web FX — top destination countries', () => {
-  for (const countryCode of TOP_FX_COUNTRIES) {
+  for (const countryCode of FX_COUNTRIES) {
     test(`FX transaction — ${countryCode}`, async ({ page, request }) => {
       test.setTimeout(180000);
 
