@@ -1,9 +1,9 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { saveExtendedState, loadSignupData } = require('../../../utils/shared-state');
-const LinkedCardPage = require('../../../pages/LinkedCardPage');
-const UserWebCardFundsPage = require('../../../pages/UserWebCardFundsPage');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { saveExtendedState, loadSignupData } = require('../../../../utils/shared-state');
+const LinkedCardPage = require('../../../../pages/LinkedCardPage');
+const UserWebCardFundsPage = require('../../../../pages/UserWebCardFundsPage');
 const { LINK_CARD_SUCCESS } = LinkedCardPage;
 
 const CARD_FUNDS_AMOUNT     = '$90.00';
@@ -27,6 +27,34 @@ test.describe.serial('User-web — Linked card', () => {
     await test.step('Step 1 | Login to user-web', async () => {
       await loginUserWebWithPhone({ page, request, userData });
     });
+
+    // Idempotency guard: if this spec previously linked a card for this same user (e.g. a
+    // retry after Test 1 passed the PGW call but failed a later step, or a manual re-run
+    // against an already-onboarded user), the UI's "Add Card Account" state would add a
+    // SECOND card with the same PAN — two account records sharing one last4, which breaks
+    // Test 2's card-account-{last4} lookup (it can no longer tell which account is "the"
+    // linked card). Skip re-adding if a card is already registered for this user.
+    let existingCard = null;
+    try {
+      existingCard = await cardFundsPage.discoverLinkedCardAccount();
+    } catch {
+      existingCard = null; // no card linked yet — proceed to link one below
+    }
+
+    if (existingCard) {
+      await test.step('Step 2 | Card already linked for this user — skip re-adding to avoid a duplicate', async () => {
+        console.log(
+          `[link-card] card already linked: "${existingCard.accountName}"` +
+          ` (${existingCard.accountNumber}), last4: ${existingCard.last4} — skipping add`,
+        );
+        saveExtendedState({
+          linkedCardAccountNumber: existingCard.accountNumber,
+          linkedCardLast4:         existingCard.last4,
+          linkedCardAccountName:   existingCard.accountName,
+        });
+      });
+      return;
+    }
 
     await test.step('Step 2 | Move Money → Link Card landing', async () => {
       await linkedCard.navigateToLinkCardUserWeb();
