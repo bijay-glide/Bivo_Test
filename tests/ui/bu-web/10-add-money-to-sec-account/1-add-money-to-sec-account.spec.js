@@ -1,10 +1,10 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { toCentsInput, formatUsdDisplay } = require('../../../utils/amount-input');
-const { loadSignupData } = require('../../../utils/shared-state');
-const UserWebInternalTransferPage = require('../../../pages/UserWebInternalTransferPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { toCentsInput, formatUsdDisplay } = require('../../../../utils/amount-input');
+const { loadSignupData } = require('../../../../utils/shared-state');
+const UserWebInternalTransferPage = require('../../../../pages/UserWebInternalTransferPage');
 
 const TRANSFER_AMOUNT_USD = '90.00';
 
@@ -25,18 +25,25 @@ test.describe('Bu-web — Internal Transfer: primary → secondary USD account',
     let secondaryAccount    = null;
     let paymentIdentifier   = null;
 
-    await test.step('Step 1 | Login to bu-web', async () => {
+    // Gate: ordering against 9.1 is enforced by the "UI bu-web sec-account" project
+    // only running after "UI bu-web accounts" (test:ui:buweb:full). This check is a
+    // safety net for standalone/out-of-order runs (e.g. --no-deps against this file
+    // alone), where 9.1 was skipped entirely rather than just slow.
+    await test.step('Step 1 | Verify spec 9.1 (add account) has run', async () => {
+      let sharedState = {};
+      try { sharedState = loadSignupData(); } catch { /* state file missing */ }
+      if (!sharedState.secondaryUsdAccountCreated) {
+        throw new Error(
+          'secondaryUsdAccountCreated flag not found in shared state — run spec 9.1 (add account) first.'
+        );
+      }
+    });
+
+    await test.step('Step 2 | Login to bu-web', async () => {
       await loginBuWebWithEmail({ page, userData });
     });
 
-    // Guard: spec 9.1 must have run and persisted the secondary account flag.
-    let sharedState = {};
-    try { sharedState = loadSignupData(); } catch { /* state file missing */ }
-    if (!sharedState.secondaryUsdAccountCreated) {
-      test.skip(true, 'Secondary USD account not found in shared state — run spec 9.1 (add account) first');
-    }
-
-    await test.step('Step 2 | Discover secondary USD wallet account', async () => {
+    await test.step('Step 3 | Discover secondary USD wallet account', async () => {
       secondaryAccount = await transferPage.discoverSecondaryUsdWallet(bivoAccountNumber);
       console.log(
         `[internal-transfer] secondary account: "${secondaryAccount.accountName}"` +
@@ -45,27 +52,28 @@ test.describe('Bu-web — Internal Transfer: primary → secondary USD account',
       expect(secondaryAccount.accountNumber, 'secondary USD wallet account number should be found').toBeTruthy();
     });
 
-    await test.step('Step 3 | Navigate to Move Money — Internal Transfer', async () => {
+    await test.step('Step 4 | Navigate to Move Money — Internal Transfer', async () => {
       await transferPage.navigateToInternalTransfer();
     });
 
-    await test.step('Step 4 | Select secondary USD wallet as "To" account', async () => {
+    await test.step('Step 5 | Select secondary USD wallet as "To" account', async () => {
       await transferPage.selectToAccount(secondaryAccount.last4);
     });
 
-    await test.step(`Step 5 | Enter transfer amount (${amountDisplay}) and proceed to review`, async () => {
+    await test.step(`Step 6 | Enter transfer amount (${amountDisplay}) and proceed to review`, async () => {
       await transferPage.enterAmountAndContinue(amountInput);
     });
 
-    await test.step('Step 6 | Verify review screen', async () => {
+    await test.step('Step 7 | Verify review screen', async () => {
       await transferPage.assertReviewScreen({
-        fromName:      'Bivo',
+        // bu-web's primary wallet is named "Primary" (user-web's is "Bivo").
+        fromName:      'Primary',
         toName:        secondaryAccount.accountName,
         amountDisplay,
       });
     });
 
-    await test.step('Step 7 | Submit transfer and verify move-fund API', async () => {
+    await test.step('Step 8 | Submit transfer and verify move-fund API', async () => {
       const captured = await transferPage.submitAndCaptureMoveFundApi();
       paymentIdentifier = captured.paymentIdentifier;
       transferPage.assertMoveFundApiCaptured(captured, {
@@ -75,14 +83,14 @@ test.describe('Bu-web — Internal Transfer: primary → secondary USD account',
       });
     });
 
-    await test.step('Step 8 | Verify transfer complete screen', async () => {
+    await test.step('Step 9 | Verify transfer complete screen', async () => {
       await transferPage.assertTransferCompleteScreen({
         toAccountName: secondaryAccount.accountName,
         amountDisplay,
       });
     });
 
-    await test.step('Step 9 | Navigate to secondary account and verify CREDIT transaction in API', async () => {
+    await test.step('Step 10 | Navigate to secondary account and verify CREDIT transaction in API', async () => {
       const { transactions } = await transferPage.navigateToAccountAndCaptureTransactions({
         last4:         secondaryAccount.last4,
         accountNumber: secondaryAccount.accountNumber,
@@ -95,61 +103,45 @@ test.describe('Bu-web — Internal Transfer: primary → secondary USD account',
     });
   });
 
-  // ── Error path: cross-currency transfer rejection ─────────────────────────
+  // ── "To" dropdown scope: USD wallets only, no multicurrency accounts ──────
 
-  test('Internal Transfer to non-USD account returns cross-currency error', async ({ page }) => {
+  test('Internal Transfer "To" dropdown lists only USD wallet accounts', async ({ page }) => {
     test.setTimeout(90000);
 
-    const transferPage  = new UserWebInternalTransferPage(page);
+    const transferPage = new UserWebInternalTransferPage(page);
     const userData      = resolveBuWebUserDataForLogin();
-    const amountInput   = toCentsInput(TRANSFER_AMOUNT_USD);
-    const amountDisplay = formatUsdDisplay(TRANSFER_AMOUNT_USD);
 
-    let nonUsdAccount = null;
-
-    await test.step('Step 1 | Login to bu-web', async () => {
-      await loginBuWebWithEmail({ page, userData });
+    // Gate: ordering against 9.1/9.2 is enforced by the "UI bu-web sec-account"
+    // project only running after "UI bu-web accounts" (test:ui:buweb:full). This
+    // check is a safety net for standalone/out-of-order runs (e.g. --no-deps against
+    // this file alone), where 9.1/9.2 were skipped entirely rather than just slow.
+    await test.step('Step 1 | Verify spec 9.1/9.2 (accounts) have run', async () => {
+      let sharedState = {};
+      try { sharedState = loadSignupData(); } catch { /* state file missing */ }
+      if (!sharedState.secondaryUsdAccountCreated) {
+        throw new Error(
+          'secondaryUsdAccountCreated flag not found in shared state — run spec 9.1 (add account) first.'
+        );
+      }
+      if (!sharedState.multicurrencyAccountsCreated) {
+        throw new Error(
+          'multicurrencyAccountsCreated flag not found in shared state — run spec 9.2 (multicurrency accounts) first.'
+        );
+      }
     });
 
-    // Guard: spec 9.2 must have run and persisted the multicurrency accounts flag.
-    let sharedState2 = {};
-    try { sharedState2 = loadSignupData(); } catch { /* state file missing */ }
-    if (!sharedState2.multicurrencyAccountsCreated) {
-      test.skip(true, 'Multicurrency accounts not found in shared state — run spec 9.2 first');
-    }
-
-    await test.step('Step 2 | Discover a non-USD fiat wallet to use as destination', async () => {
-      nonUsdAccount = await transferPage.discoverNonUsdFiatWallet();
-      console.log(
-        `[cross-currency] destination: "${nonUsdAccount.accountName}"` +
-        ` (${nonUsdAccount.currency}), last4: ${nonUsdAccount.last4}`,
-      );
+    await test.step('Step 2 | Login to bu-web', async () => {
+      await loginBuWebWithEmail({ page, userData });
     });
 
     await test.step('Step 3 | Navigate to Move Money — Internal Transfer', async () => {
       await transferPage.navigateToInternalTransfer();
     });
 
-    await test.step('Step 4 | Assert dropdowns show only fiat wallet options', async () => {
-      await transferPage.assertFromAccountDropdownContainsBivo();
-      await transferPage.assertToAccountDropdownShowsOnlyFiatWallets({ nonUsdLast4: nonUsdAccount.last4 });
-    });
-
-    await test.step('Step 5 | Select non-USD fiat wallet as "To" account', async () => {
-      await transferPage.selectToAccount(nonUsdAccount.last4);
-    });
-
-    await test.step(`Step 6 | Enter transfer amount (${amountDisplay}) and proceed to review`, async () => {
-      await transferPage.enterAmountAndContinue(amountInput);
-    });
-
-    await test.step('Step 7 | Submit transfer and assert 400 cross-currency API error', async () => {
-      const errorBody = await transferPage.submitAndCaptureTransferErrorApi();
-      transferPage.assertCrossAccountApiError(errorBody);
-    });
-
-    await test.step('Step 8 | Verify UI error message', async () => {
-      await transferPage.assertCrossAccountTransferUiError();
+    await test.step('Step 4 | Assert "To" dropdown lists only USD wallets (primary + secondary), no multicurrency accounts', async () => {
+      // bu-web's primary wallet is named "Primary" (user-web's is "Bivo").
+      await transferPage.assertFromAccountDropdownContainsBivo('Primary');
+      await transferPage.assertToAccountDropdownShowsOnlyUsdWallets();
     });
   });
 });

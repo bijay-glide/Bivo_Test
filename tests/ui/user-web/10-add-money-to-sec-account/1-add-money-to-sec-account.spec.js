@@ -1,10 +1,10 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { toCentsInput, formatUsdDisplay } = require('../../../utils/amount-input');
-const { loadSignupData } = require('../../../utils/shared-state');
-const UserWebInternalTransferPage = require('../../../pages/UserWebInternalTransferPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { toCentsInput, formatUsdDisplay } = require('../../../../utils/amount-input');
+const { loadSignupData } = require('../../../../utils/shared-state');
+const UserWebInternalTransferPage = require('../../../../pages/UserWebInternalTransferPage');
 
 const TRANSFER_AMOUNT_USD = '90.00';
 
@@ -32,8 +32,8 @@ test.describe('User-web — Internal Transfer: Bivo → secondary USD account', 
     let sharedState = {};
     try { sharedState = loadSignupData(); } catch { /* state file missing */ }
     if (!sharedState.secondaryUsdAccountCreated) {
-      console.warn('[internal-transfer] secondaryUsdAccountCreated not found in shared state — falling back to known-good user 2125340081');
-      userData = { phoneNumber: '2125340081' };
+      console.warn('[internal-transfer] secondaryUsdAccountCreated not found in shared state — falling back to known-good user 4155370245');
+      userData = { phoneNumber: '4155370245' };
       bivoAccountNumber = '';
     }
 
@@ -128,8 +128,8 @@ test.describe('User-web — Internal Transfer: Bivo → secondary USD account', 
     let sharedState2 = {};
     try { sharedState2 = loadSignupData(); } catch { /* state file missing */ }
     if (!sharedState2.multicurrencyAccountsCreated) {
-      console.warn('[cross-currency] multicurrencyAccountsCreated not found in shared state — falling back to known-good user 2125340081');
-      userData = { phoneNumber: '2125340081' };
+      console.warn('[cross-currency] multicurrencyAccountsCreated not found in shared state — falling back to known-good user 4155370245');
+      userData = { phoneNumber: '4155370245' };
     }
 
     await test.step('Step 1 | Login to user-web', async () => {
