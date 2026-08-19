@@ -1,16 +1,17 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const UserWebMultiCurrencyAccountPage = require('../../../pages/UserWebMultiCurrencyAccountPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const UserWebMultiCurrencyAccountPage = require('../../../../pages/UserWebMultiCurrencyAccountPage');
+const { saveExtendedState } = require('../../../../utils/shared-state');
 
 // Currencies we never open an account for. CHF is offered in the dropdown but
 // POSTs 400 "Product not found", so it is excluded.
 const EXCLUDED_FIAT = ['CHF'];
 
 // Generic account name with the currency/coin code at the end, so the accounts
-// are easy to segregate later (e.g. "QA Account CAD", "QA Account USDC").
-const accountNameFor = (code) => `QA Account ${code}`;
+// are easy to segregate later (e.g. "QA Wallet CAD", "QA Wallet USDC").
+const accountNameFor = (code) => `QA Wallet ${code}`;
 
 test.describe('User-web — Multicurrency accounts (fiat + stablecoin)', () => {
   // The modal lives behind dashboard XHRs that can re-render mid-flow; retry once.
@@ -38,8 +39,8 @@ test.describe('User-web — Multicurrency accounts (fiat + stablecoin)', () => {
       console.log('[multicurrency] stablecoins to create:', JSON.stringify(stablecoins));
     });
 
-    // Each account is named "QA Account <CODE>" so its currency is at the end of
-    // the label (e.g. "QA Account CAD", "QA Account USDC") and easy to tell apart.
+    // Each account is named "QA Wallet <CODE>" so its currency is at the end of
+    // the label (e.g. "QA Wallet CAD", "QA Wallet USDC") and easy to tell apart.
     await test.step(`Step 3 | Create fiat accounts (${fiat.join(', ') || 'none'})`, async () => {
       for (const code of fiat) {
         await test.step(`Fiat — ${code}`, async () => {
@@ -56,6 +57,10 @@ test.describe('User-web — Multicurrency accounts (fiat + stablecoin)', () => {
           expect(response.ok(), `coin/accounts POST should succeed for ${code}`).toBeTruthy();
         });
       }
+    });
+
+    await test.step('Step 5 | Persist multicurrency-accounts flag to shared state', async () => {
+      saveExtendedState({ multicurrencyAccountsCreated: true });
     });
   });
 });

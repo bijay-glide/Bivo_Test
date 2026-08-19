@@ -1,9 +1,10 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const { generateAccountName } = require('../../../utils/test-data-generator');
-const AddAccountPage = require('../../../pages/AddAccountPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const { generateAccountName } = require('../../../../utils/test-data-generator');
+const { saveExtendedState } = require('../../../../utils/shared-state');
+const AddAccountPage = require('../../../../pages/AddAccountPage');
 
 test.describe('Bu-web — Open new currency account', () => {
   // The "Add Account" modal lives behind a sidebar that the SPA occasionally
@@ -33,6 +34,10 @@ test.describe('Bu-web — Open new currency account', () => {
 
     await test.step('Step 4 | Verify new account is listed', async () => {
       await addAccountPage.verifyAccountInSidebar(accountName);
+    });
+
+    await test.step('Step 5 | Persist secondary-account flag to shared state', async () => {
+      saveExtendedState({ secondaryUsdAccountCreated: true });
     });
   });
 });

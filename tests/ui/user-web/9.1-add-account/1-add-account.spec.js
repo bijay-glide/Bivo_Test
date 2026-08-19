@@ -1,13 +1,13 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const UserWebAddAccountPage = require('../../../pages/UserWebAddAccountPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const UserWebAddAccountPage = require('../../../../pages/UserWebAddAccountPage');
 
 // The name-only "Add an Account" modal opens a secondary account in the base
 // currency (USD). Put the currency at the end of the label so it is easy to tell
-// apart from the multicurrency accounts (mirrors "QA Account <CODE>" in 1.13).
-const ACCOUNT_NAME = 'QA Account USD';
+// apart from the multicurrency accounts (mirrors "QA Wallet <CODE>" in 9.2).
+const ACCOUNT_NAME = 'QA Wallet USD';
 
 test.describe('User-web — Open new account', () => {
   // The "Add an Account" modal lives behind a sidebar that the SPA occasionally

@@ -1,8 +1,9 @@
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const MultiCurrencyAccountPage = require('../../../pages/MultiCurrencyAccountPage');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const MultiCurrencyAccountPage = require('../../../../pages/MultiCurrencyAccountPage');
+const { saveExtendedState } = require('../../../../utils/shared-state');
 
 // Currencies we never open an account for. CHF is excluded by request.
 const EXCLUDED_FIAT = ['CHF'];
@@ -53,6 +54,10 @@ test.describe('Bu-web — Multicurrency accounts (fiat + stablecoin)', () => {
           expect(response.ok(), `coin/accounts POST should succeed for ${code}`).toBeTruthy();
         });
       }
+    });
+
+    await test.step('Step 5 | Persist multicurrency-accounts flag to shared state', async () => {
+      saveExtendedState({ multicurrencyAccountsCreated: true });
     });
   });
 });
