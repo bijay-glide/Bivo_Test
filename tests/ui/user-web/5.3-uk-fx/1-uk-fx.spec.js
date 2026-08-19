@@ -1,12 +1,16 @@
 // UK FX full-matrix suite — every From-account × recipient-currency × deliver-to
-// combination discovered on the GB Create FX page, EXCEPT Instant Card Payout
-// (card flows are out of scope). Each scenario creates a fresh payee and confirms
-// a real transaction (asserts paymentIdentifier from POST /international/payment).
+// combination discovered on the GB Create FX page, including Instant Card Payout
+// for GBP/EUR (see the two dedicated test() blocks below the matrix loop). Each
+// scenario creates a fresh payee and confirms a real transaction (asserts
+// paymentIdentifier from POST /international/payment).
 //
 // Matrix (identical for both From accounts — USD and GBP wallets):
-//   → GBP: IBAN powered by Visa Direct (default), Bank Deposit, PayPal     [Instant Card Payout skipped]
-//   → EUR: IBAN (default)                                                  [Instant Card Payout skipped]
-//   → USD: Bank Deposit (default), SWIFT Payment, Domestic Payment, PayPal
+//   → GBP: IBAN powered by Visa Direct (default), Bank Deposit, Instant Card Payout
+//   → EUR: IBAN (default), Instant Card Payout
+//   → USD: Bank Deposit - ACH, SWIFT Payment, Domestic Payment, PayPal
+//
+// PayPal → GBP is no longer a valid deliver-to option (removed from the app) and has been
+// dropped from the matrix.
 //
 // Banking forms (probed June 2026):
 //   IBAN powered by Visa Direct → IBAN number
@@ -14,7 +18,6 @@
 //   IBAN (→EUR)                 → IBAN + SWIFT Code
 //   Bank Deposit/Domestic (→USD)→ account number + routing number
 //   SWIFT Payment (→USD)        → account number + bank name + SWIFT code (+ optional intermediary)
-//   PayPal (→GBP)               → recipient type "Email" + PayPal account ID (email) + wallet
 //   PayPal (→USD)               → recipient type "PayPal ID" + bank account number + wallet
 //                                 (type "Email" enables Continue but the submit is a silent
 //                                  no-op — suspected FE validation mismatch)
@@ -25,17 +28,18 @@ process.env.BIVO_UI_STATE_SUITE = 'userweb';
 const { test, expect } = require('@playwright/test');
 const {
   generateFxTransactionData,
-  generateSwiftCode,
   generateRandomDigits,
   generateUsPaymentPayee,
-} = require('../../../utils/test-data-generator');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
+} = require('../../../../utils/test-data-generator');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
 
 // Static prefix keeps generated banking fields recognisable as automated test data.
 const BIVO_PREFIX = '98765';
-// IBAN check digits are validated — keep the known-good static value (same as 1.8).
-const GB_IBAN = 'GB26542316456541232134';
+// Real, checksum-valid IBAN (NatWest, mod-97 verified) — the previous static value
+// actually failed the mod-97 check despite the "known-good" comment; only passed
+// because the server doesn't enforce the full IBAN checksum.
+const GB_IBAN = 'GB29NWBK60161331926819';
 
 /** Channel-specific banking-details data. Keyed by channel + recipient currency. */
 function bankingDataFor(channel, currency) {
@@ -43,15 +47,15 @@ function bankingDataFor(channel, currency) {
     return { iban: GB_IBAN };
   }
   if (channel === 'IBAN') {
-    return { iban: GB_IBAN, swiftCode: generateSwiftCode(8) };
+    return { iban: GB_IBAN, swiftCode: 'NWBKGB2L' }; // NatWest — same bank identity as GB_IBAN
   }
   if (channel === 'Bank Deposit' && currency === 'GBP') {
     return {
       accountNumber: BIVO_PREFIX + generateRandomDigits(7), // 12 digits
-      sortCode: '987' + generateRandomDigits(3),            // 6 digits
+      sortCode: '601613', // NatWest real sort code — same bank identity as GB_IBAN
     };
   }
-  if ((channel === 'Bank Deposit' || channel === 'Domestic Payment') && currency === 'USD') {
+  if ((channel === 'Bank Deposit' || channel === 'Bank Deposit - ACH' || channel === 'Domestic Payment') && currency === 'USD') {
     return {
       accountNumber: BIVO_PREFIX + generateRandomDigits(7),
       routingNumber: '021000021', // valid ABA routing — same as wire specs
@@ -60,82 +64,40 @@ function bankingDataFor(channel, currency) {
   if (channel === 'SWIFT Payment') {
     return {
       accountNumber: BIVO_PREFIX + generateRandomDigits(7),
-      bankName: 'Bivo Test Bank',
-      swiftCode: generateSwiftCode(8),
-      intermediarySwift: generateSwiftCode(8), // optional intermediary-bank SWIFT field
+      bankName: 'JPMorgan Chase Bank', // matches the routingNumber used elsewhere in this suite
+      swiftCode: 'CHASUS33',
+      intermediarySwift: 'BOFAUS3N', // Bank of America — distinct real correspondent bank
     };
-  }
-  if (channel === 'PayPal' && currency === 'GBP') {
-    // GBP form: "PayPal account ID" — email matches the Recipient type "Email".
-    return { paypalId: `automation.fx.${generateRandomDigits(6)}@example.com` };
   }
   if (channel === 'PayPal' && currency === 'USD') {
     // USD form: literal bank "Account Number" field with numeric validation.
     return { accountNumber: BIVO_PREFIX + generateRandomDigits(7) };
   }
+  if (channel === 'Wire - SWIFT') {
+    // Confirmed via live recording (Aug 2026) — ClearBank Limited, same bank identity
+    // for the bank code / SWIFT code / country fields this corridor's form renders.
+    return {
+      accountNumber: BIVO_PREFIX + generateRandomDigits(7),
+      bankName: 'ClearBank Limited',
+      bankCode: 'CLBKGBL1XXX',
+      swiftCode: 'CLRBGB22XXX',
+      bankCountryCode: 'GB',
+    };
+  }
   throw new Error(`bankingDataFor: no data shape for "${channel}" → ${currency}`);
 }
 
-/** Fills the channel's banking form (screen after the payee step) and continues. */
-async function fillBankingDetails(page, fxPage, channel, currency, data) {
-  // Non-PayPal channels share the data-testid banking form (addpayeeaddress-*), the same
-  // one bu-web fills via fillFxBankingByTestId. Using testids keeps it robust against the
-  // label/placeholder drift that previously left fields unfilled and Continue disabled.
-  if (channel !== 'PayPal') {
-    await fxPage.fillFxBankingByTestId({ channel, currency, data });
-    return;
-  }
-  if (channel === 'PayPal') {
-    // Two dropdowns + one value field. Options render as <a> in a dropdown menu.
-    // GBP: "PayPal account ID" (email).  USD: "Enter account number" (numeric bank account).
-    // Dropdowns FIRST, value field LAST — filling before the dropdowns leaves the
-    // field validation stale and Continue can stay disabled past the assert timeout.
-    // GBP uses "Email"; USD uses "PayPal ID" — with type=Email the USD form enables
-    // Continue but the click never submits (suspected FE validation mismatch).
-    const recipientType = currency === 'GBP' ? /^Email$/ : /^PayPal ID$/;
-    await page.getByRole('button', { name: 'PayPal recipient type' }).click();
-    await page.locator('a').filter({ hasText: recipientType }).first().click();
-    await page.getByRole('button', { name: 'PayPal or Venmo' }).click();
-    await page.locator('a').filter({ hasText: /^PayPal$/ }).first().click();
-
-    const idInput = currency === 'GBP'
-      ? page.getByRole('textbox', { name: 'PayPal account ID' })
-      : page.getByRole('textbox', { name: 'Enter account number' });
-    const idValue = currency === 'GBP' ? data.paypalId : data.accountNumber;
-    const continueBtn = page.getByRole('button', { name: 'Continue' });
-    for (let i = 0; i < 3; i++) {
-      await idInput.fill(idValue);
-      if (await continueBtn.isEnabled({ timeout: 4000 }).catch(() => false)) break;
-      await idInput.fill('');
-      await page.waitForTimeout(400);
-    }
-    // The first Continue click can be swallowed by a re-render after wallet
-    // selection — click until the form actually leaves the screen.
-    for (let i = 0; i < 3; i++) {
-      await fxPage.continue();
-      const left = await idInput
-        .waitFor({ state: 'hidden', timeout: 4000 })
-        .then(() => true)
-        .catch(() => false);
-      if (left) break;
-    }
-    return;
-  }
-  throw new Error(`fillBankingDetails: unsupported "${channel}" → ${currency}`);
-}
-
 /**
- * The 16 scenarios: 2 From accounts × 8 non-card channel combos.
+ * The 14 scenarios: 2 From accounts × 7 non-card channel combos.
  * isDefaultChannel=true → only verify the pre-selected deliver-to button;
  * false → open the dropdown and pick via deliver-to-option-{label}.
  */
 const CHANNEL_COMBOS = [
   { currency: 'GBP', channel: 'IBAN powered by Visa Direct', isDefaultChannel: true },
   { currency: 'GBP', channel: 'Bank Deposit', isDefaultChannel: false },
-  { currency: 'GBP', channel: 'PayPal', isDefaultChannel: false },
   { currency: 'EUR', channel: 'IBAN', isDefaultChannel: true },
-  { currency: 'USD', channel: 'Bank Deposit', isDefaultChannel: true },
-  { currency: 'USD', channel: 'SWIFT Payment', isDefaultChannel: false },
+  { currency: 'USD', channel: 'Bank Deposit - ACH', isDefaultChannel: false },
+  { currency: 'USD', channel: 'Wire - SWIFT', isDefaultChannel: false },
   { currency: 'USD', channel: 'Domestic Payment', isDefaultChannel: false },
   { currency: 'USD', channel: 'PayPal', isDefaultChannel: false },
 ];
@@ -196,6 +158,10 @@ test.describe('User-web FX — United Kingdom (GB) full matrix', () => {
       await test.step('Step 5 | Enter send amount and continue', async () => {
         await fxPage.userWebFocusYouSendSection();
         await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+        if (sc.channel === 'Wire - SWIFT') {
+          // USD → USD is a 1:1 corridor: no fee, exchange amount matches the sent amount.
+          await fxPage.verifySendMoneySummary({ fee: '$0.00', exchangeAmount: fxData.amount, rate: '$1 =1' });
+        }
         await fxPage.continue();
       });
 
@@ -211,7 +177,11 @@ test.describe('User-web FX — United Kingdom (GB) full matrix', () => {
       });
 
       await test.step('Step 7 | Enter banking details', async () => {
-        await fillBankingDetails(page, fxPage, sc.channel, sc.currency, bankingData);
+        if (sc.channel === 'PayPal') {
+          await fxPage.fillPayPalBankingDetails({ currency: sc.currency, data: bankingData });
+        } else {
+          await fxPage.fillFxBankingByTestId({ channel: sc.channel, currency: sc.currency, data: bankingData });
+        }
       });
 
       await test.step('Step 8 | Identity verification if present', async () => {
@@ -232,6 +202,89 @@ test.describe('User-web FX — United Kingdom (GB) full matrix', () => {
         // Shows either "Processing Transaction" (wallet has sufficient balance) or "Ways To
         // Fund" (balance low — app asks for a funding source). Both confirm the transaction
         // was accepted; the paymentIdentifier assertion in step 9 is the definitive check.
+        await fxPage.verifyProcessingOrWaysToFundAndDismiss();
+      });
+    });
+  }
+
+  // Instant Card Payout — confirmed as a real, wanted addition (previously out of scope).
+  // Unlike the channel matrix above, this deliver-to option links a test card (in the PGW
+  // iframe) instead of filling banking-details fields, so it's kept as its own test() rather
+  // than folded into CHANNEL_COMBOS / bankingDataFor.
+  // The sandbox card vault only accepts this test PAN — keep it fixed (random cards are rejected).
+  const TEST_CARD_NUMBER = '4761348010000127';
+
+  for (const cardCurrency of ['GBP', 'EUR']) {
+    const cardTitle = `UK FX — USD → ${cardCurrency} via Instant Card Payout`;
+    test(cardTitle, async ({ page, request }) => {
+      test.setTimeout(180000);
+
+      const fxPage = new FxTransactionPage(page);
+      const fxData = generateFxTransactionData({
+        randomizeSendAmountUsd: true,
+        note: 'Sent from Bivo',
+        countryCode: 'GB',
+      });
+      const payee = generateUsPaymentPayee({
+        firstName: fxData.beneficiaryFirstName,
+        lastName: fxData.beneficiaryLastName,
+      });
+
+      await test.step('Step 1 | Login', async () => {
+        const userData = resolveUserDataForLogin();
+        await loginUserWebWithPhone({ page, request, userData });
+      });
+
+      await test.step('Step 2 | Open Create FX Transaction and select GB', async () => {
+        await fxPage.navigateToCreateFxTransactionUserWeb();
+        await fxPage.selectDestinationCountryByTestId('GB');
+      });
+
+      await test.step(`Step 3 | Recipient currency: ${cardCurrency}`, async () => {
+        await fxPage.selectRecipientCurrency(cardCurrency);
+      });
+
+      await test.step('Step 4 | Deliver to: Instant Card Payout', async () => {
+        await fxPage.selectDeliverToOption('Instant Card Payout');
+      });
+
+      await test.step('Step 5 | Enter send amount and continue', async () => {
+        await fxPage.userWebFocusYouSendSection();
+        await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+        await fxPage.continue();
+      });
+
+      await test.step('Step 6 | Add payee (name-only)', async () => {
+        await fxPage.addPayeeAutoByTestId({
+          firstName: payee.firstName,
+          lastName: payee.lastName,
+          addressOne: payee.addressOne,
+          city: payee.city,
+          state: payee.state,
+          postalCode: payee.postalCode,
+        });
+      });
+
+      await test.step('Step 7 | Link card details', async () => {
+        const { identifier } = await fxPage.linkCardAndCaptureApi(TEST_CARD_NUMBER);
+        expect(identifier, `POST /pgw/v1/card should return an identifier (${cardTitle})`).toBeTruthy();
+      });
+
+      await test.step('Step 8 | Identity verification if present', async () => {
+        await fxPage.handleIdentityStepIfPresent(fxData.identityType, fxData.identityNumber);
+      });
+
+      await test.step('Step 9 | Fill note and confirm — assert paymentIdentifier returned', async () => {
+        await fxPage.fillFxPaymentNote(fxData.note);
+        await fxPage.fillFxInvoiceNumberIfPresent();
+        const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
+        expect(
+          paymentIdentifier,
+          `POST /remittance/v1/international/payment should return a paymentIdentifier (${cardTitle})`,
+        ).toBeTruthy();
+      });
+
+      await test.step('Step 10 | Verify post-confirmation state — Processing or Ways To Fund', async () => {
         await fxPage.verifyProcessingOrWaysToFundAndDismiss();
       });
     });

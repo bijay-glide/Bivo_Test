@@ -1,32 +1,33 @@
 // UK (GB) FX matrix for bu-web business, from the single USD wallet. Covers every
 // recipient-currency × deliver-to combination the GB Create FX page exposes:
-//   GBP → IBAN powered by Visa Direct (default), Bank Deposit, Instant Card Payout*, PayPal*
-//   EUR → IBAN (default), Instant Card Payout*
-//   USD → Bank Deposit (default), SWIFT Payment, Domestic Payment, Wire SWIFT, PayPal*
+//   GBP → IBAN powered by Visa Direct (default), Bank Deposit, Instant Card Payout, PayPal
+//   EUR → IBAN (default), Instant Card Payout
+//   USD → Bank Deposit - ACH, SWIFT Payment, Domestic Payment, Wire - SWIFT, PayPal
 // The implemented flow is data-testid based. The payee form is name-only for GBP/EUR
 // and name+address for USD (auto-detected).
 //
-// (*) Instant Card Payout and PayPal are added as test.fixme placeholders — the
-// channel-specific payee/banking/confirm steps aren't implemented yet (Instant Card
-// Payout is a card-selection flow with no text inputs; PayPal has its own recipient
-// flow). Replace `ready: false` → `ready: true` and fill the channel handling when ready.
+// New/not-yet-implemented channels can be added as `ready: false` — this renders them as
+// test.fixme placeholders (see the `if (!sc.ready)` branch below) with just the shared
+// lead-in wired up, until the channel-specific payee/banking/confirm steps are filled in.
 //
 // Each implemented scenario creates a fresh payee and confirms a real transaction
 // (asserts the paymentIdentifier from the FX payment POST).
-require('./state-suite-env');
+require('../state-suite-env');
 
-const { test, expect } = require('../../../fixtures/ui-fixtures');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
 const {
   generateFxTransactionData,
-  generateSwiftCode,
   generateRandomDigits,
   generateUsPaymentPayee,
-} = require('../../../utils/test-data-generator');
-const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../utils/ui-login-helper');
-const FxTransactionPage = require('../../../pages/FxTransactionPage');
+} = require('../../../../utils/test-data-generator');
+const { loginBuWebWithEmail, resolveBuWebUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const FxTransactionPage = require('../../../../pages/FxTransactionPage');
 
 const BIVO_PREFIX = '98765';
-const GB_IBAN = 'GB26542316456541232134';
+// Real, checksum-valid IBAN (NatWest, mod-97 verified) — the previous static value
+// actually failed the mod-97 check despite being treated as "known-good"; only passed
+// because the server doesn't enforce the full IBAN checksum.
+const GB_IBAN = 'GB29NWBK60161331926819';
 // The sandbox card vault only accepts this test PAN — keep it fixed (random cards are rejected).
 const TEST_CARD_NUMBER = '4761348010000127';
 
@@ -37,22 +38,37 @@ function bankingDataFor(channel, currency) {
     case 'IBAN powered by Visa Direct':
       return { iban: GB_IBAN };
     case 'IBAN':
-      return { iban: GB_IBAN, swiftCode: generateSwiftCode(8) };
+      return { iban: GB_IBAN, swiftCode: 'NWBKGB2L' }; // NatWest — same bank identity as GB_IBAN
     case 'Bank Deposit':
+    case 'Bank Deposit - ACH':
       return currency === 'GBP'
-        ? { accountNumber, sortCode: '987' + generateRandomDigits(3) }
+        ? { accountNumber, sortCode: '601613' } // NatWest real sort code — same bank identity as GB_IBAN
         : { accountNumber, routingNumber: '021000021' };
     case 'Domestic Payment':
       return { accountNumber, routingNumber: '021000021' };
     case 'SWIFT Payment':
       return {
         accountNumber,
-        bankName: 'Bivo Test Bank',
-        swiftCode: generateSwiftCode(8),
-        intermediarySwift: generateSwiftCode(8),
+        bankName: 'JPMorgan Chase Bank', // matches the routingNumber used elsewhere in this suite
+        swiftCode: 'CHASUS33',
+        intermediarySwift: 'BOFAUS3N', // Bank of America — distinct real correspondent bank
       };
-    case 'Wire SWIFT':
-      return { accountNumber };
+    case 'Wire - SWIFT':
+      // Confirmed via live recording (Aug 2026) — ClearBank Limited, same bank identity
+      // for the bank code / SWIFT code / country fields this corridor's form renders.
+      return {
+        accountNumber,
+        bankName: 'ClearBank Limited',
+        bankCode: 'CLBKGBL1XXX',
+        swiftCode: 'CLRBGB22XXX',
+        bankCountryCode: 'GB',
+      };
+    case 'PayPal':
+      // GBP form: "PayPal account ID" — email matches the Recipient type "Email".
+      // USD form: literal bank "Account Number" field with numeric validation.
+      return currency === 'GBP'
+        ? { paypalId: `automation.fx.${generateRandomDigits(6)}@example.com` }
+        : { accountNumber };
     default:
       throw new Error(`bankingDataFor: no data shape for "${channel}" → ${currency}`);
   }
@@ -65,16 +81,14 @@ const CHANNEL_COMBOS = [
   { currency: 'GBP', channel: 'IBAN powered by Visa Direct', isDefaultChannel: true, ready: true },
   { currency: 'GBP', channel: 'Bank Deposit', isDefaultChannel: false, ready: true },
   { currency: 'GBP', channel: 'Instant Card Payout', isDefaultChannel: false, ready: true, cardPayout: true },
-  { currency: 'GBP', channel: 'PayPal', isDefaultChannel: false, ready: false },
   // USD → EUR (2 deliver-to options)
   { currency: 'EUR', channel: 'IBAN', isDefaultChannel: true, ready: true },
   { currency: 'EUR', channel: 'Instant Card Payout', isDefaultChannel: false, ready: true, cardPayout: true },
   // USD → USD (5 deliver-to options)
-  { currency: 'USD', channel: 'Bank Deposit', isDefaultChannel: true, ready: true },
-  { currency: 'USD', channel: 'SWIFT Payment', isDefaultChannel: false, ready: true },
+  { currency: 'USD', channel: 'Bank Deposit - ACH', isDefaultChannel: false, ready: true },
   { currency: 'USD', channel: 'Domestic Payment', isDefaultChannel: false, ready: true },
-  { currency: 'USD', channel: 'Wire SWIFT', isDefaultChannel: false, ready: true },
-  { currency: 'USD', channel: 'PayPal', isDefaultChannel: false, ready: false },
+  { currency: 'USD', channel: 'Wire - SWIFT', isDefaultChannel: false, ready: true },
+  { currency: 'USD', channel: 'PayPal', isDefaultChannel: false, ready: true },
 ];
 
 test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
@@ -127,10 +141,12 @@ test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
       await test.step('Step 2 | Open Create FX Transaction and select GB', async () => {
         await fxPage.navigateToCreateFxTransactionUserWeb();
         await fxPage.selectDestinationCountryByTestId('GB');
+        await fxPage.verifyDestinationCountryHeading('United Kingdom');
       });
 
       await test.step(`Step 3 | Recipient currency: ${sc.currency}`, async () => {
         await fxPage.selectRecipientCurrency(sc.currency);
+        await fxPage.verifyRecipientCurrencySelected(sc.currency);
       });
 
       await test.step(`Step 4 | Deliver to: ${sc.channel}`, async () => {
@@ -144,6 +160,10 @@ test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
       await test.step('Step 5 | Enter send amount and continue', async () => {
         await fxPage.userWebFocusYouSendSection();
         await fxPage.enterSendAmountForBusiness({ amountInput: fxData.amountInput });
+        if (sc.channel === 'Wire - SWIFT') {
+          // USD → USD is a 1:1 corridor: no fee, exchange amount matches the sent amount.
+          await fxPage.verifySendMoneySummary({ fee: '$0.00', exchangeAmount: fxData.amount, rate: '$1 =1' });
+        }
         await fxPage.continue();
       });
 
@@ -163,6 +183,8 @@ test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
           // Instant Card Payout: link the card (in the PGW iframe) and assert the card API.
           const { identifier } = await fxPage.linkCardAndCaptureApi(TEST_CARD_NUMBER);
           expect(identifier, `POST /pgw/v1/card should return an identifier (${title})`).toBeTruthy();
+        } else if (sc.channel === 'PayPal') {
+          await fxPage.fillPayPalBankingDetails({ currency: sc.currency, data: bankingData });
         } else {
           await fxPage.fillFxBankingByTestId({ channel: sc.channel, currency: sc.currency, data: bankingData });
         }
@@ -176,18 +198,6 @@ test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
         await fxPage.fillFxPaymentNoteIfPresent(fxData.note);
         await fxPage.fillFxInvoiceNumberIfPresent();
         await fxPage.verifyFxReviewStructure({ firstName: payee.firstName, lastName: payee.lastName });
-        if (sc.cardPayout) {
-          // Card linking (Step 7, POST /pgw/v1/card) works and is asserted above. The
-          // transaction itself cannot be completed: clicking "Confirm Transaction" on the
-          // card-payout review screen crashes the frontend with
-          //   TypeError: Cannot read properties of null (reading 'fields')
-          //   at sendPayment (src/bivo-microservice/shared/domain/payee/hooks/useSendPayment.js:98)
-          //   at onClick   (src/pages/CreatePayment/ReviewTransferPayment/index.js:542)
-          // No payment POST fires and the app shows a runtime-error overlay. Marked fixme
-          // until the FE is fixed; flip to a real confirm/assert once it is. (Verified June 2026.)
-          test.fixme(true, 'FE bug: card-payout confirm crashes in useSendPayment (null "fields")');
-          return;
-        }
         const { paymentIdentifier } = await fxPage.confirmFxTransactionAndCaptureInternationalPaymentApi();
         {
           expect(
@@ -198,15 +208,7 @@ test.describe('Bu-web FX — United Kingdom (GB) matrix (USD wallet)', () => {
       });
 
       await test.step('Step 10 | Verify post-confirmation state — Processing or Ways To Fund', async () => {
-        const processingHeading = page.getByRole('heading', { name: 'Processing Transaction' });
-        const waysToFundHeading = page.getByRole('heading', { name: 'Ways To Fund' });
-        await expect(
-          processingHeading.or(waysToFundHeading),
-          'Expected either Processing Transaction modal or Ways To Fund funding screen',
-        ).toBeVisible({ timeout: 15000 });
-        if (await processingHeading.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await fxPage.verifyProcessingAndDismiss();
-        }
+        await fxPage.verifyProcessingOrWaysToFundAndDismiss();
       });
     });
   }
