@@ -1,10 +1,10 @@
-require('./state-suite-env');
-const { test, expect } = require('../../../fixtures/ui-fixtures');
-const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../utils/ui-login-helper');
-const WirePaymentPage = require('../../../pages/WirePaymentPage');
-const UserWebWithdrawFundsPage = require('../../../pages/UserWebWithdrawFundsPage');
-const { generateWireFormData, generateWirePaymentSchedule } = require('../../../utils/test-data-generator');
-const { toCentsInput } = require('../../../utils/amount-input');
+require('../state-suite-env');
+const { test, expect } = require('../../../../fixtures/ui-fixtures');
+const { loginUserWebWithPhone, resolveUserDataForLogin } = require('../../../../utils/ui-login-helper');
+const WirePaymentPage = require('../../../../pages/WirePaymentPage');
+const UserWebWithdrawFundsPage = require('../../../../pages/UserWebWithdrawFundsPage');
+const { generateWireFormData, generateWirePaymentSchedule } = require('../../../../utils/test-data-generator');
+const { toCentsInput } = require('../../../../utils/amount-input');
 
 const WITHDRAW_AMOUNT_USD = '90.00';
 const WITHDRAW_AMOUNT     = toCentsInput(WITHDRAW_AMOUNT_USD);
